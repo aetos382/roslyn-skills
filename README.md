@@ -14,7 +14,9 @@ The skill does not implement analysis logic, code fixes, or tests; it prepares e
 ## Prerequisites
 
 - .NET SDK 10.0.300 or later. The skill's helper tools are file-based C# apps (`dotnet Script.cs`), so
-  nothing else needs to be installed on Windows, macOS, or Linux.
+  nothing else needs to be installed on Windows, macOS, or Linux. They run from a temporary directory
+  and take repository paths as arguments, so a `global.json` at your repository root, which `dotnet`
+  applies to every folder beneath it, cannot pin them to an SDK that is older or not installed.
 - `git` on `PATH` (used to derive the documentation URL from the `origin` remote). `gh` is used when
   available to look up the default branch.
 

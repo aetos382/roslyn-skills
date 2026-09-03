@@ -40,6 +40,15 @@ dotnet "$S/DocUrl.cs" -- --doc docs/rules/ABC1001.md
 (In PowerShell use `$env:CLAUDE_PLUGIN_ROOT`; when the variable is unset, use the directory containing
 this SKILL.md.) All four print JSON. Never guess what a script would return; run it and read the output.
 
+**Run them from the scratchpad**, not from anywhere inside the target repository, and pass absolute
+paths for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
+`global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root
+applies just as much when the working directory is several folders below it. A pinned SDK older than
+10.0.300 breaks `#:include`; a pinned version that is not installed fails outright with "A compatible
+.NET SDK was not found". Every script takes the repository path as an argument for this reason. The
+constraint applies only to these scripts; build the analyzer project itself from the repository, where
+its pinned SDK is the correct one.
+
 ## Workflow
 
 ### Step 1: Detect conventions
