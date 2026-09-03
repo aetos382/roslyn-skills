@@ -140,7 +140,7 @@ since three of the four can be built out of `<ProjectReference>` items:
 |  | IDs in the analyzer project | IDs outside it |
 |--|-----------------------------|----------------|
 | **reached by a project reference** | `AnalyzerProject` | `SharedProject` |
-| **reached by a linked `<Compile>`** | `LinkedFile` | `SharedFile` |
+| **reached by a linked `<Compile>`** | `LinkedFile` | `SharedFile` (a `.shproj` counts) |
 
 ### AnalyzerProject: the analyzer project owns the IDs (default)
 
@@ -207,6 +207,22 @@ project (a `Directory.Build.props` next to the shared folder can carry it once).
 any public API, so consumers cannot reference them; that only matters if the package is meant to expose
 its ID constants.
 
+A Visual Studio **shared project** (`.shproj` with its `.projitems`) is the same arrangement with the
+item list factored out, and is detected as `SharedFile` too:
+
+```xml
+<!-- Contoso.Analyzers.csproj and Contoso.Analyzers.CodeFixes.csproj alike -->
+<Import Project="..\Shared\Shared.projitems" Label="Shared" />
+```
+
+It builds: MSBuild follows the import and the shared files land in each consumer's `Compile` items, so
+`dotnet build` on the consuming projects works. Two caveats. The `.shproj` itself is a container that
+produces nothing, so building it directly fails with `MSB4040: The project does not have targets` — that
+is by design, not a misconfiguration. And `.shproj`/`.projitems` are Visual Studio artifacts in the old
+MSBuild namespace, with no `dotnet new` template and uneven support outside Visual Studio. Prefer plain
+linked `<Compile>` items for a new repository, and keep the shared project when the repository already
+has one.
+
 ### What to do
 
 1. Detect: `FindConventions.cs` reports `idSharing` and `diagnosticIdsProject`, the project that owns
@@ -218,7 +234,7 @@ its ID constants.
    | `AnalyzerProject` | the analyzer project | references the analyzer project | `public` |
    | `LinkedFile` | the analyzer project | compiles that file through a linked `<Compile>` item | `internal` is fine |
    | `SharedProject` | a third project (an ordinary class library; no `.shproj` required) | references that third project, as the analyzer does | `public` |
-   | `SharedFile` | no project; each side links the file | compiles that file through a linked `<Compile>` item | `internal` is fine |
+   | `SharedFile` | no project; each side links the file, directly or through a `.shproj`'s `.projitems` | compiles that file through a linked `<Compile>` item | `internal` is fine |
    | `none` | nowhere the code-fix project can see | needs one of the above | — |
 
    Follow the detected arrangement and keep the visibility consistent with it.

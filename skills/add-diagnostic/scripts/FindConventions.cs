@@ -50,6 +50,26 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         if (string.Equals(probe, root, StringComparison.OrdinalIgnoreCase)) break;
     }
 
+    // A Visual Studio shared project (.shproj) contributes its files through <Import ...*.projitems>.
+    // Scanning the imported file lets its <Compile> items appear like any other linked source.
+    foreach (var bf in buildFiles.ToList())
+    {
+        try
+        {
+            XmlDocument ix = new();
+            ix.Load(bf);
+            var bfDir = Path.GetDirectoryName(bf)!;
+            foreach (XmlAttribute a in ix.SelectNodes("//*[local-name()='Import']/@Project")!)
+            {
+                if (!a.Value.EndsWith(".projitems", StringComparison.OrdinalIgnoreCase)) continue;
+                var p = (a.Value.Replace("$(MSBuildThisFileDirectory)", bfDir + "/")).Replace('\\', '/');
+                var full = Path.IsPathRooted(p) ? p : Path.Combine(bfDir, p);
+                if (File.Exists(full)) buildFiles.Add(Path.GetFullPath(full));
+            }
+        }
+        catch { }
+    }
+
     var packageRefs = new SortedSet<string>(StringComparer.Ordinal);
     var projectRefs = new SortedSet<string>(StringComparer.Ordinal);
     var linked = new SortedSet<string>(StringComparer.Ordinal);
@@ -61,19 +81,19 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         var bfDir = Path.GetDirectoryName(bf)!;
         string Expand(string v) => v.Replace("$(MSBuildThisFileDirectory)", bfDir + "/").Replace('\\', '/');
         // GlobalPackageReference (Central Package Management) applies to every project, so treat it like PackageReference.
-        foreach (XmlAttribute a in bx.SelectNodes("//PackageReference/@Include | //GlobalPackageReference/@Include")!) packageRefs.Add(a.Value);
-        foreach (XmlAttribute a in bx.SelectNodes("//ProjectReference/@Include")!)
+        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='PackageReference' or local-name()='GlobalPackageReference']/@Include")!) packageRefs.Add(a.Value);
+        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='ProjectReference']/@Include")!)
         {
             var p = Expand(a.Value);
             var full = Path.IsPathRooted(p) ? p : Path.Combine(bfDir, p);
             projectRefs.Add(File.Exists(full) ? Repo.Rel(root, Path.GetFullPath(full)) : p);
         }
-        foreach (XmlAttribute a in bx.SelectNodes("//Compile/@Include")!)
+        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='Compile']/@Include")!)
         {
             var p = Expand(a.Value);
             if (p.Contains("../") || p.Contains('/')) linked.Add(p);
         }
-        foreach (XmlElement er in bx.SelectNodes("//EmbeddedResource")!)
+        foreach (XmlElement er in bx.SelectNodes("//*[local-name()='EmbeddedResource']")!)
         {
             var name = er.GetAttribute("Update");
             if (name.Length == 0) name = er.GetAttribute("Include");
@@ -109,7 +129,7 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         var px = new XmlDocument();
         px.Load(csproj);
         sdkAttr = px.DocumentElement?.GetAttribute("Sdk") ?? "";
-        isTestProjectProp = string.Equals(px.SelectSingleNode("//IsTestProject")?.InnerText.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        isTestProjectProp = string.Equals(px.SelectSingleNode("//*[local-name()='IsTestProject']")?.InnerText.Trim(), "true", StringComparison.OrdinalIgnoreCase);
     }
     catch { }
     var isTest = isTestProjectProp
@@ -491,7 +511,9 @@ if (diagIds is not null)
 //   reached by a       | AnalyzerProject             | SharedProject (a third project
 //   project reference  |                             | both sides reference)
 //   reached by a       | LinkedFile                  | SharedFile (a file owned by no
-//   linked <Compile>   |                             | project, compiled by each side)
+//   linked <Compile>   |                             | project, compiled by each side;
+//                      |                             | a VS .shproj lands here, since it
+//                      |                             | produces no assembly of its own)
 if (sharing == "none")
 {
     var codeFixes = projects.Where(p => p.Kind == "codefix").ToList();
