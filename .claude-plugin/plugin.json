@@ -1,0 +1,12 @@
+{
+  "name": "roslyn-skills",
+  "version": "0.1.0",
+  "description": "Skills for developing Roslyn analyzers, code fixes, source generators, and diagnostic suppressors.",
+  "author": {
+    "name": "aetos"
+  },
+  "homepage": "https://github.com/aetos382/roslyn-skills#readme",
+  "repository": "https://github.com/aetos382/roslyn-skills",
+  "license": "MIT",
+  "keywords": ["roslyn", "analyzer", "csharp", "dotnet", "diagnostics"]
+}

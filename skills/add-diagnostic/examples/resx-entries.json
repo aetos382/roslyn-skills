@@ -1,0 +1,14 @@
+[
+  {
+    "name": "CancellationTokenShouldBeForwardedTitle",
+    "value": "Cancellation token should be forwarded"
+  },
+  {
+    "name": "CancellationTokenShouldBeForwardedMessage",
+    "value": "Forward the cancellation token '{0}' to the call to '{1}'"
+  },
+  {
+    "name": "CancellationTokenShouldBeForwardedDescription",
+    "value": "Methods that receive a CancellationToken should pass it to the asynchronous calls they make so that cancellation propagates."
+  }
+]

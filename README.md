@@ -1,0 +1,88 @@
+# roslyn-skills
+
+Claude Code plugin with skills for developing Roslyn analyzers, code fixes, source generators, and
+diagnostic suppressors.
+
+## Skills
+
+| Skill | Invocation | Purpose |
+|-------|------------|---------|
+| `add-diagnostic` | `/roslyn-skills:add-diagnostic <what the diagnostic should report>` or a natural-language request such as "add a diagnostic that warns when a Task is not awaited" | Adds the ID constant, DiagnosticDescriptor (or SuppressionDescriptor), resx strings, `AnalyzerReleases.Unshipped.md` row, and optional rule documentation, following the repository's existing conventions. |
+
+The skill does not implement analysis logic, code fixes, or tests; it prepares everything around them.
+
+## Prerequisites
+
+- .NET SDK 10.0.300 or later. The skill's helper tools are file-based C# apps (`dotnet Script.cs`), so
+  nothing else needs to be installed on Windows, macOS, or Linux.
+- `git` on `PATH` (used to derive the documentation URL from the `origin` remote). `gh` is used when
+  available to look up the default branch.
+
+## Installation
+
+Local development:
+
+```bash
+claude --plugin-dir /path/to/roslyn-skills
+```
+
+From a marketplace, add the repository as a marketplace source and install `roslyn-skills`.
+
+## Conventions the skill enforces
+
+- **ID**: PascalCase normative name (`TaskShouldBeAwaited`) with a value of a three-letter prefix plus a
+  zero-padded number (`CTS2001`). The leading digit is a category band, so related rules stay adjacent.
+  IDs live in a dedicated `DiagnosticIds.cs`; suppressions in `SuppressionIds.cs` with values of the form
+  `CTSS0001`.
+- **Descriptor**: defined in the analyzer / generator / suppressor class, same name as the ID, with
+  `helpLinkUri` pointing at the rule's documentation page when one exists.
+- **Resources**: `{Name}Title`, `{Name}Message`, `{Name}Description` (or `{Name}Justification`), added to
+  every culture file in ID order. Only `.resx` files are edited; when the project uses Visual Studio's
+  `ResXFileCodeGenerator`, the skill reminds you to regenerate `Resources.Designer.cs`.
+- **Release tracking**: a row in `AnalyzerReleases.Unshipped.md` with a short description in the Notes
+  column (suppressions are not tracked).
+- **Documentation**: `docs/rules/<ID>.md` plus an index `README.md`, with the GitHub blob URL as the help
+  link.
+
+## Configuration
+
+Detection from the repository is usually enough. To pin conventions, commit `.claude/roslyn-skills.md`:
+
+```markdown
+---
+diagnosticPrefix: CTS
+idDigits: 4
+diagnosticIdsFile: src/Contoso.Analyzers/DiagnosticIds.cs
+suppressionIdsFile: src/Contoso.Analyzers/SuppressionIds.cs
+categories:
+  Design: 1
+  Usage: 2
+  Performance: 3
+docsDir: docs/rules
+docsIndexFile: README.md
+docUrlTemplate: https://github.com/{owner}/{repo}/blob/{branch}/{path}
+idSharing: ProjectReference
+---
+
+Free-form notes for the skill go here.
+```
+
+Every key is optional. See `skills/add-diagnostic/examples/roslyn-skills.md` for the full list.
+
+## Layout
+
+```
+roslyn-skills/
+├── .claude-plugin/plugin.json
+├── README.md
+└── skills/
+    └── add-diagnostic/
+        ├── SKILL.md
+        ├── references/   # conventions, descriptor patterns, resx, release tracking, docs
+        ├── examples/     # canonical files and templates
+        └── scripts/      # FindConventions.cs, NextId.cs, AddResxEntries.cs, DocUrl.cs, Common.cs
+```
+
+## License
+
+MIT
