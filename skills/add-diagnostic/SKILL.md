@@ -55,7 +55,11 @@ step:
   (a hand-written `GetLocalizableResourceString(string)`-style method with its `accessibility`),
   `localizableStringProperties` (existing `LocalizableResourceString` properties, their `style`
   `nested` / `suffix`, `nestedClass`, and `file`), and `requiresVisualStudioRegeneration`.
-- `analyzerReleases[]`, `docs`, `git.docUrlTemplate`, `idSharing` (`ProjectReference`, `CompileInclude`,
+- `docs` — `directory` and `indexFile` when rule pages already exist, plus `candidateDirectories`
+  (existing `docs` / `doc` / `Documentation` / `wiki` / `rules` folders, shallowest first),
+  `mentionFiles` (Markdown elsewhere that names existing IDs), and `suggestedDirectory` (where a new
+  page should go, `docs/rules` when nothing exists).
+- `analyzerReleases[]`, `git.docUrlTemplate`, `idSharing` (`ProjectReference`, `CompileInclude`,
   `SharedProject`, or `none`), `diagnosticIdsProject`, `config`.
 
 When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is
@@ -90,13 +94,17 @@ Draft before asking, so the user reviews concrete text rather than open question
    trailing period, description as full sentences).
 4. **Target class**: the analyzer, generator, or suppressor class that will report it; propose an existing
    one when the description matches, otherwise propose a new class name.
-5. **Documentation**: default to yes when `docs.directory` exists, otherwise no.
+5. **Documentation**: propose *yes* with the target path, always. Use `docs.directory` when it exists,
+   otherwise `docs.suggestedDirectory` (a missing folder is created, not a reason to skip). Check
+   `docs.mentionFiles` first: when rules are documented in one shared page or a README table, propose
+   extending that file instead of creating a new layout.
 
 Then print the proposal as a short table in the message (name, ID band/category, title, message,
 description, target class, documentation yes/no) and, directly after it, ask in one `AskUserQuestion`
 round (at most four questions) only for what the user must decide: severity (unless the request
 already states it), category (when not inferred), message arguments (which values fill `{0}`, `{1}`),
-and `suppressedDiagnosticId` for suppressions. Keep question texts short; the table already carries
+documentation (always, offering the proposed path and "skip"; never decide it silently), and
+`suppressedDiagnosticId` for suppressions. Keep question texts short; the table already carries
 the context, and the user can correct any row of it in the "Other" answer. Skip the round entirely
 when the request already settles everything. Re-draft once from the answers; do not loop.
 
@@ -149,10 +157,11 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   `ID | Category | Severity | <short sentence describing the rule>` under `### New Rules`; create the
   Shipped/Unshipped pair from `examples/` when missing (`references/analyzer-releases.md`). Skip for
   suppressions.
-- **5f. Documentation** (when requested): create the page at the path used in 5c (`docs/rules/{ID}.md`
-  or the detected layout) following the newest existing page, or `examples/rule-doc-template.md` when
-  none exists; add the index row in sorted position (`references/documentation.md`). For suppressions,
-  create pages only when `docs.suppressionDocs` or a suppressions table already exists.
+- **5f. Documentation** (when requested): create the directory when it does not exist, then the page at
+  the path used in 5c, following the newest existing page or `examples/rule-doc-template.md` when there
+  is none; add the index row in sorted position, creating the index from
+  `examples/rules-index-template.md` when the directory is new (`references/documentation.md`). For
+  suppressions, create pages only when `docs.suppressionDocs` or a suppressions table already exists.
 - **5g. ID sharing** (only when a code-fix project exists and `idSharing` is `none`; skip for
   `ProjectReference`, `CompileInclude`, and `SharedProject`): ask ProjectReference (recommended) or
   Compile Include, then add the reference to the code-fix project and set the IDs class visibility
@@ -193,6 +202,8 @@ files.
   `private` helper means the entry point belongs next to it, in the same class.
 - Suppressions: separate IDs file, independent sequence, `Justification` only, no AnalyzerReleases row.
 - `helpLinkUri` points at a page that exists, or is omitted.
+- Documentation is always offered, never skipped silently; a missing documentation directory is created,
+  not treated as a decision.
 - Ask for severity, category, and message arguments unless the request already states them.
 - Do not implement analysis logic, code fixes, or tests; offer them as follow-ups.
 

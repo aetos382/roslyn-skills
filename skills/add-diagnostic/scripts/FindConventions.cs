@@ -318,19 +318,80 @@ foreach (var p in projects)
 // ---------------------------------------------------------------------------
 // Documentation
 // ---------------------------------------------------------------------------
-var ruleDocRegex = new Regex(prefix is not null ? $@"^{Regex.Escape(prefix)}\d{{3,5}}\.md$" : @"^[A-Z]{2,7}\d{3,5}\.md$");
-var suppDocRegex = new Regex(prefix is not null ? $@"^{Regex.Escape(prefix)}S\d{{3,5}}\.md$" : @"^[A-Z]{2,7}S\d{3,5}\.md$");
+// A rule page is named after the ID, optionally followed by a separator and a slug
+// (CTS1001.md, CTS1001-disposable-field.md).
+// With a known prefix, casing in file names does not matter. Without one, require uppercase letters so
+// that ordinary files (ISO8601-notes.md and the like) are not mistaken for rule pages.
+var letters = prefix is not null ? Regex.Escape(prefix) : "[A-Z]{2,7}";
+var docCase = prefix is not null ? RegexOptions.IgnoreCase : RegexOptions.None;
+var ruleDocRegex = new Regex($@"^{letters}\d{{3,5}}([-_. ].*)?\.md$", docCase);
+var suppDocRegex = new Regex($@"^{letters}S\d{{3,5}}([-_. ].*)?\.md$", docCase);
+
+var allMarkdown = Repo.Files(root, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
+
 string? docsDir = null;
 if (config.Get("docsDir") is { } cfgDocs && Directory.Exists(Path.Combine(root, cfgDocs))) docsDir = Path.GetFullPath(Path.Combine(root, cfgDocs));
 else
 {
-    docsDir = Repo.Files(root, "*.md")
+    docsDir = allMarkdown
         .Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f)) || suppDocRegex.IsMatch(Path.GetFileName(f)))
         .GroupBy(f => Path.GetDirectoryName(f)!)
         .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
         .Select(g => g.Key).FirstOrDefault();
 }
-var docs = new JsonObject { ["directory"] = null, ["indexFile"] = null, ["ruleDocs"] = new JsonArray(), ["suppressionDocs"] = new JsonArray() };
+
+// Directories that a repository plausibly uses for documentation, whatever it calls them.
+var docDirNameRegex = new Regex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase);
+var candidateDirs = Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+    .Where(d => !Repo.IsBuildOutput(d) && docDirNameRegex.IsMatch(Path.GetFileName(d)))
+    .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
+    .Select(d => Repo.Rel(root, d))
+    .ToList();
+
+// Markdown that mentions an existing diagnostic ID (a single page listing every rule, a README table).
+var knownIds = new[] { diagIds, suppIds }
+    .Where(o => o is not null)
+    .SelectMany(o => o!["ids"]!.AsArray().Select(i => i!["value"]!.ToString()))
+    .Distinct(StringComparer.Ordinal).ToList();
+var mentionFiles = new List<string>();
+if (knownIds.Count > 0)
+{
+    var mentionRegex = new Regex(@"(^|[\s|(\[#`])(" + string.Join('|', knownIds.Select(Regex.Escape)) + @")([\s|)\].,:`]|$)", RegexOptions.Multiline);
+    foreach (var f in allMarkdown)
+    {
+        if (docsDir is not null && Path.GetDirectoryName(f) == docsDir) continue;
+        // Release tracking lists every ID by design; it is not documentation.
+        if (Path.GetFileName(f).StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase)) continue;
+        try
+        {
+            if (new FileInfo(f).Length > 512 * 1024) continue;
+            if (mentionRegex.IsMatch(File.ReadAllText(f))) mentionFiles.Add(Repo.Rel(root, f));
+        }
+        catch { }
+        if (mentionFiles.Count >= 20) break;
+    }
+}
+
+// Where a new page should go when nothing exists yet: under the shallowest documentation-ish directory,
+// else the conventional docs/rules.
+var suggested = docsDir is not null
+    ? Repo.Rel(root, docsDir)
+    : candidateDirs.Count > 0
+        ? (docDirNameRegex.IsMatch(Path.GetFileName(candidateDirs[0])) && Path.GetFileName(candidateDirs[0]).Equals("rules", StringComparison.OrdinalIgnoreCase)
+            ? candidateDirs[0]
+            : candidateDirs[0] + "/rules")
+        : "docs/rules";
+
+var docs = new JsonObject
+{
+    ["directory"] = null,
+    ["indexFile"] = null,
+    ["ruleDocs"] = new JsonArray(),
+    ["suppressionDocs"] = new JsonArray(),
+    ["candidateDirectories"] = Json.Array(candidateDirs),
+    ["mentionFiles"] = Json.Array(mentionFiles),
+    ["suggestedDirectory"] = suggested,
+};
 if (docsDir is not null)
 {
     docs["directory"] = Repo.Rel(root, docsDir);

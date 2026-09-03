@@ -2,9 +2,13 @@
 
 ## When to write documentation
 
-Documentation is opt-in. Propose a default in the design round (*yes* when the repository already has a
-rules documentation directory with one page per ID, otherwise *no*) and let the user override it. The
-answer decides `helpLinkUri`: URL when a page is created, omitted otherwise.
+Ask every time, and propose *yes*. The absence of a documentation directory is never a reason to skip:
+the directory is created along with the page. Only an explicit "skip" from the user (or a request that
+already says so) leaves the rule undocumented. The answer decides `helpLinkUri`: URL when a page is
+created, omitted otherwise.
+
+Include the target path in the proposal so the user can redirect it in one step, for example
+"Create `Documentation/rules/CTS1001.md` and add it to the index?".
 
 ## Location and naming
 
@@ -14,10 +18,18 @@ answer decides `helpLinkUri`: URL when a page is created, omitted otherwise.
 | Rule page | `<ID>.md`, e.g. `docs/rules/CTS1001.md` | — |
 | Index | `README.md` inside the directory (GitHub renders it when the folder is opened) | `docsIndexFile` |
 
-Always prefer what the repository already does: `FindConventions.cs` reports the detected
-directory, index file, and existing pages. If pages exist with a different naming scheme (for example
-`docs/CTS1001-disposable-field.md` or `docs/rules/CTS1001/README.md`), copy that scheme exactly; ask when
-two schemes coexist.
+Always prefer what the repository already does. `FindConventions.cs` searches the whole tree and reports,
+in decreasing order of certainty:
+
+| Field | Meaning | What to do |
+|-------|---------|------------|
+| `docs.directory`, `docs.indexFile`, `docs.ruleDocs` | A directory already holds pages named after IDs (`CTS1001.md`, `CTS1001-disposable-field.md`) | Use it. Copy the existing naming scheme exactly, including any slug after the ID; ask when two schemes coexist. |
+| `docs.mentionFiles` | Markdown elsewhere names existing IDs, e.g. one `Rules.md` listing every rule or a README table | The repository documents rules in that file. Propose adding a section or row there instead of starting a per-ID layout. |
+| `docs.candidateDirectories` | Existing folders called `docs`, `doc`, `Documentation`, `wiki`, `rules`, `analyzers`, `diagnostics` (shallowest first) | No rule pages yet, but the repository has a documentation home. Put the new page under it, following its casing (`Documentation/rules/`, not `docs/rules/`). |
+| `docs.suggestedDirectory` | The path derived from the above, or `docs/rules` when the repository has nothing | Use it as the proposed path in the question, and create the directory when the user agrees. |
+
+Naming a new directory: keep the parent's existing casing and add a `rules` subdirectory
+(`Documentation/rules`). When the candidate is already called `rules`, use it as is.
 
 ## Page content
 
