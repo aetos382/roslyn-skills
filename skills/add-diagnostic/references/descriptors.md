@@ -69,6 +69,11 @@ public static class Localizable
 Keep the properties grouped per diagnostic under a `// {Name} ({ID})` comment, in ID order, matching the
 resx. Use `{ get; } =` initializers (created once) rather than `=>` bodies.
 
+`using` directives follow the file they are added to: match the neighbours' order and grouping (commonly
+`System` first, then third-party, then `Microsoft.CodeAnalysis`), and honour
+`dotnet_separate_import_directive_groups` in `.editorconfig` or `.globalconfig` when it is set. A new
+file copies the layout of the closest existing one in the same project.
+
 If the target analyzer class does not exist yet, create the smallest valid class (see
 `examples/AnalyzerWithDescriptor.cs`): the `[DiagnosticAnalyzer(LanguageNames.CSharp)]` attribute, the
 descriptor, `SupportedDiagnostics`, and an `Initialize` that calls `EnableConcurrentExecution()` and

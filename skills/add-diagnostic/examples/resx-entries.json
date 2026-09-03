@@ -5,7 +5,8 @@
   },
   {
     "name": "CancellationTokenShouldBeForwardedMessage",
-    "value": "Forward the cancellation token '{0}' to the call to '{1}'"
+    "value": "Forward the cancellation token '{0}' to the call to '{1}'",
+    "comment": "{0} is the cancellation token parameter name. {1} is the name of the method being called."
   },
   {
     "name": "CancellationTokenShouldBeForwardedDescription",

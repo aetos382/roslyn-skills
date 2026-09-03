@@ -68,8 +68,13 @@ suppression is not needed by default. Behaviour:
 `helpLinkUri` must be the permanent URL of the page on the default branch. Use the script:
 
 ```bash
-dotnet "${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts/DocUrl.cs" -- --doc docs/rules/CTS1001.md
+dotnet "${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts/DocUrl.cs" -- \
+  --doc docs/rules/CTS1001.md --path /absolute/path/to/the/repository
 ```
+
+`--doc` is the path **within the repository**, because it becomes part of the URL; it is the one argument
+that is not absolute. An absolute path is relativized against the repository root, and one outside the
+repository is refused rather than pasted into the URL.
 
 Resolution order for the template: `--template` argument → `docUrlTemplate` in `.claude/roslyn-skills.md`
 → `https://github.com/{owner}/{repo}/blob/{branch}/{path}` when `origin` points at github.com. Owner and

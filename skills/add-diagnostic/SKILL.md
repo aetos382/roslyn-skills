@@ -28,15 +28,22 @@ Four file-based C# apps live in `scripts/` and need the .NET 10 SDK, 10.0.300 or
 `dotnet <file>.cs -- <options>`; the first run compiles and later runs are cached. From Bash:
 
 ```bash
+cd "$SCRATCH"                                       # working directory: outside the repository
 S="${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts"
-dotnet "$S/FindConventions.cs" -- --path . --summary > <scratchpad>/conventions.json   # then read that file
-dotnet "$S/NextId.cs" -- --ids-file src/X/DiagnosticIds.cs --category Usage
-dotnet "$S/NextId.cs" -- --ids-file src/X/DiagnosticIds.cs --prefix ABC --band 1   # fresh repository
-dotnet "$S/NextId.cs" -- --ids-file src/X/SuppressionIds.cs --suppression
-dotnet "$S/AddResxEntries.cs" -- --resx src/X/Resources.resx    --ids-file src/X/DiagnosticIds.cs --entries entries.en.json
-dotnet "$S/AddResxEntries.cs" -- --resx src/X/Resources.ja.resx --ids-file src/X/DiagnosticIds.cs --entries entries.ja.json
-dotnet "$S/DocUrl.cs" -- --doc docs/rules/ABC1001.md
+R="/absolute/path/to/the/repository"
+
+dotnet "$S/FindConventions.cs" -- --path "$R" --summary > conventions.json   # then read that file
+dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/DiagnosticIds.cs" --category Usage
+dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/DiagnosticIds.cs" --prefix ABC --band 1   # fresh repository
+dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/SuppressionIds.cs" --suppression
+dotnet "$S/AddResxEntries.cs" -- --resx "$R/src/X/Resources.resx"    --ids-file "$R/src/X/DiagnosticIds.cs" --entries entries.en.json
+dotnet "$S/AddResxEntries.cs" -- --resx "$R/src/X/Resources.ja.resx" --ids-file "$R/src/X/DiagnosticIds.cs" --entries entries.ja.json
+dotnet "$S/DocUrl.cs" -- --doc docs/rules/ABC1001.md --path "$R"      # --doc stays repository-relative
 ```
+
+Three separate locations are in play: the working directory decides which SDK runs, the script path is
+in the plugin, and the arguments name the repository. Only `--doc` is repository-relative, because it
+becomes part of a URL; everything else is an absolute path.
 
 `CLAUDE_PLUGIN_ROOT` is often unset, in Bash as well as in PowerShell (`$env:CLAUDE_PLUGIN_ROOT`); fall
 back to the base directory given when this skill was loaded. All four scripts print JSON, including for
@@ -56,8 +63,8 @@ its pinned SDK is the correct one.
 
 ### Step 1: Detect conventions
 
-Run `FindConventions.cs` from the repository root with `--summary`, redirecting to a file in the
-scratchpad. Read the fields listed below; the rest of the JSON describes projects and resource groups
+Run `FindConventions.cs` with `--path <repository>` and `--summary`, from the scratchpad, redirecting to
+a file there. Read the fields listed below; the rest of the JSON describes projects and resource groups
 the workflow does not touch, so skip it. Ask nothing in this step: collect what is undecided and put it
 in the single question round of Step 3.
 
@@ -67,7 +74,8 @@ in the single question round of Step 3.
   existing values). Never search for it by hand; when it is null the repository has none.
 - `projects[]` — kind (`analyzer`, `codefix`, `generator`, `test`, `roslyn-component`, `other`) and
   the analyzer / suppressor / generator classes with their files.
-- `resx[]` — resource groups per project, all culture files, `resourceClass`, `localizableStringHelper`
+- `resx[]` — resource groups per project, all culture files, `resourceClass`, `neutralLanguage`
+  (the language of the neutral file, null when the project declares none), `localizableStringHelper`
   (a hand-written `GetLocalizableResourceString(string)`-style method with its `accessibility`),
   `localizableStringProperties` (existing `LocalizableResourceString` properties, their `style`
   `nested` / `suffix`, `nestedClass`, and `file`), and `requiresVisualStudioRegeneration`.
@@ -80,6 +88,9 @@ in the single question round of Step 3.
 - `git.docUrlTemplate`, `idSharing` (`AnalyzerProject`, `LinkedFile`, `SharedProject`, `SharedFile`, or
   `none` — where the IDs live, see `references/id-conventions.md`), `diagnosticIdsProject` (null when the
   IDs file belongs to no project), `config`.
+- `excludedPluginDirectories` — Claude Code plugin trees found inside the repository and skipped, this
+  plugin included when it is installed there. Their sample files are documentation and must never be
+  read as the repository's conventions; do not go looking in them by hand either.
 
 When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is
 null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough); ask
@@ -229,11 +240,15 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   the scratchpad first**; the files may already carry uncommitted work, so `git checkout --` is not a
   recovery path and must not be used. Then run `AddResxEntries.cs` **once per culture file**, each with
   its own entries JSON in the scratchpad and `--ids-file` pointing at the IDs file edited in 5a. The
-  neutral file (`Resources.resx`) carries the source language; every `Resources.<culture>.resx` carries a
-  translation into that culture's language, taken from the file name, so `Resources.ja.resx` gets
-  Japanese. Never copy the source text into a satellite file: it looks translated and never gets fixed.
-  Read each report: when `valid` is false, restore from the scratchpad copies and stop. Never edit
-  `*.Designer.cs` (`references/resources.md`).
+  neutral file (`Resources.resx`) is written in `resx[].neutralLanguage` (the project's
+  `<NeutralLanguage>`, English only when that is null and the existing entries are English); every
+  `Resources.<culture>.resx` carries a translation into that culture's language, taken from the file
+  name, so `Resources.ja.resx` gets Japanese. Never copy the source text into a satellite file: it looks
+  translated and never gets fixed.
+  In the **neutral file only**, give every entry whose text contains a placeholder a `comment` saying
+  what each one holds, in order (`{0} is the field name. {1} is the declaring type.`), so a translator
+  can move them safely. Read each report: when `valid` is false, restore from the scratchpad copies and
+  stop. Never edit `*.Designer.cs` (`references/resources.md`).
 - **5e. AnalyzerReleases.Unshipped.md** (diagnostics only): build the analyzer project **before** adding
   the row. The descriptor from 5c now exists with no row to match it, so a working release-tracking
   analyzer reports **RS2000** for the new ID, or **RS2008** ("enable analyzer release tracking") when the
@@ -242,11 +257,14 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   analyzer never running. If neither appears, add `Microsoft.CodeAnalysis.Analyzers`
   (`PrivateAssets="all"`) to the project and build again. Do **not** add `<AdditionalFiles>` items for
   the release files: the SDK registers them implicitly, and their absence from the project file is not a
-  defect. Then append the row
-  `ID | Category | Severity | <short sentence describing the rule>` under `### New Rules`; create the
-  Shipped/Unshipped pair from `examples/` when missing (`references/analyzer-releases.md`). Skip this
-  whole edit for suppressions, and skip the build when 5d reported
-  `requiresVisualStudioRegeneration`.
+  defect. This build is also where warnings introduced by 5c first appear, IDE0303 among them: fix them
+  now rather than waiting for Step 6. Then append the row
+  `ID | Category | Severity | <short sentence describing the rule>` under `### New Rules`. When the pair
+  is missing, create `AnalyzerReleases.Unshipped.md` from `examples/` and
+  `AnalyzerReleases.Shipped.md` with **only its two comment lines** — copying the example's
+  `## Release 1.0` section verbatim declares rules that do not exist and earns RS2002
+  (`references/analyzer-releases.md`). Skip this whole edit for suppressions, and skip the build when 5d
+  reported `requiresVisualStudioRegeneration`.
 - **5f. Documentation** (when requested): create the directory when it does not exist, then the page at
   the path used in 5c, following the newest existing page or `examples/rule-doc-template.md` when there
   is none; add the index row in sorted position, creating the index from
@@ -258,8 +276,10 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   and set the IDs class visibility accordingly. When `diagnosticIdsProject` is null the IDs file belongs
   to no project, so add the linked `<Compile>` item to each side (`SharedFile`) instead of moving it.
 - **5h. Config file**: create or update `.claude/roslyn-skills.md` (`examples/roslyn-skills.md`) only
-  when a decision was made that detection cannot reproduce next time (new prefix, new band, non-GitHub
-  URL template, unusual docs layout).
+  when a decision was made that detection cannot reproduce next time: a non-GitHub URL template, a docs
+  layout the scan misreads, a descriptor helper worth naming in the notes. A new prefix or a new band is
+  **not** such a decision — 5a writes the `// <Category> (<PREFIX><n>xxx)` header, and detection reads
+  both back from it, as Step 6 confirms. Creating the file for those leaves two sources of truth.
 
 Match each file's existing indentation, line endings, and blank-line pattern. Use `Edit` for insertions
 into existing files; use `Write` only for new files.

@@ -18,11 +18,24 @@
    has one group (`Resources.resx` plus optional `Resources.ja.resx`, `Resources.de.resx`, ...). When a
    project has several groups, ask which one holds diagnostic strings, or pick the one that already
    contains `*Title` / `*Message` entries.
-2. Add an entry to **every culture file of the group**, translated per file. The neutral file
-   (`Resources.resx`) holds the source language, normally English. Each `Resources.<culture>.resx` holds
-   the same message in that culture's language, which the file name names: `.ja` Japanese, `.de` German,
-   `.fr` French, `.zh-Hans` Simplified Chinese. Keep the placeholders (`{0}`, `{1}`) and the quoting
-   style identical across languages; translate the prose around them.
+2. Add an entry to **every culture file of the group**, translated per file. Each
+   `Resources.<culture>.resx` holds the message in that culture's language, which the file name names:
+   `.ja` Japanese, `.de` German, `.fr` French, `.zh-Hans` Simplified Chinese. Keep the placeholders
+   (`{0}`, `{1}`) and the quoting style identical across languages; translate the prose around them.
+
+   The neutral file's language is **not** assumed to be English. `FindConventions.cs` reports it as
+   `resx[].neutralLanguage`, resolved in this order:
+
+   | Source | Example |
+   |--------|---------|
+   | `<NeutralLanguage>` in the csproj or a `Directory.Build.props` above it | `<NeutralLanguage>ja</NeutralLanguage>` |
+   | `<AssemblyAttribute Include="System.Resources.NeutralResourcesLanguageAttribute">` with `_Parameter1` | generated attribute written as an item |
+   | `[assembly: NeutralResourcesLanguage("...")]` in any source file of the project | usually `AssemblyInfo.cs` |
+
+   Write the neutral file in that language. When it is null the project has never declared one (CA1824
+   suggests adding it), so match the language of the entries already in the file, and fall back to
+   English only when the file is empty. A project whose neutral language is `ja` and which also has a
+   `Resources.ja.resx` is duplicating itself: mention it in the report rather than silently writing both.
 
    Never write the source text into a satellite file. A missing entry falls back to the neutral resource
    and is visibly untranslated, but source text sitting in `Resources.ja.resx` looks finished and stays
@@ -74,6 +87,32 @@ along with the failed insertion.
 
 For a one-off manual edit, insert the same XML by hand and run the script with `--validate-only` afterwards.
 
+## Placeholder comments
+
+A translator sees only the string, so `Field '{0}' is IDisposable but is never disposed` gives no hint
+about what `{0}` holds or whether the order can change in another language. The neutral file carries that
+information in the `comment` field of each entry that has a placeholder:
+
+```json
+{
+  "name": "CancellationTokenShouldBeForwardedMessage",
+  "value": "Forward the cancellation token '{0}' to the call to '{1}'",
+  "comment": "{0} is the cancellation token parameter name. {1} is the name of the method being called."
+}
+```
+
+Rules:
+
+- One sentence per placeholder, in numeric order, naming what the argument holds, not its type
+  (`{0} is the field name`, not `{0} is a string`). Say which symbol it comes from when that is not
+  obvious from the message.
+- Neutral file only, whatever language that file is in. Satellite files get no comments: the comment
+  describes the source string, and duplicating it into every culture leaves copies to drift.
+- No placeholder, no comment. `Title` and `Description` usually take none.
+- The comment is not written into `AnalyzerReleases.*.md` or the documentation page; those describe the
+  rule, not its message arguments. It does, however, match the argument-order comment placed above the
+  descriptor in 5c, so keep the two consistent.
+
 ## Designer.cs and build errors
 
 The descriptor code uses `nameof(Resources.XxxTitle)`, so the strongly typed resource class must expose
@@ -95,7 +134,9 @@ mention this in the final summary when it applies; it is the one step the skill 
 - Keep `xml:space="preserve"` on every `data` element; Visual Studio adds it and the ResX reader relies on
   it for leading/trailing whitespace.
 - Escape `<`, `>`, `&` in values (the script does this through the XML DOM).
-- Do not add `<comment>` elements unless the file already uses them for diagnostic strings.
+- Add a `<comment>` to every entry in the **neutral** file whose text contains a placeholder; see
+  "Placeholder comments" below. Leave satellite files without comments, and do not add comments to
+  entries that have no placeholder.
 - Do not touch the `resheader` elements or any `metadata`/`assembly` nodes.
 - Keep the declaration `<?xml version="1.0" encoding="utf-8"?>` and the UTF-8 BOM if the file has one.
 - The script reproduces the file's existing shape, including the absence of a trailing newline after

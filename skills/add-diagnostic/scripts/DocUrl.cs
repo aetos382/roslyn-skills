@@ -5,6 +5,10 @@
 //
 // Usage:  dotnet DocUrl.cs -- --doc docs/rules/ABC1001.md [--template <url-template>] [--path <repo>]
 //
+// --doc is the documentation file's path *within the repository*, because it becomes part of a URL. An
+// absolute path is accepted and made relative to the repository root; one pointing outside it is an error
+// rather than a plausible-looking broken link.
+//
 // Template resolution: --template, then `docUrlTemplate` in .claude/roslyn-skills.md, then
 // https://github.com/{owner}/{repo}/blob/{branch}/{path} when origin is on github.com.
 // Owner/repo come from the origin remote; branch from origin/HEAD, then `gh repo view`, then the current branch.
@@ -12,8 +16,23 @@
 using System.Text.Json.Nodes;
 
 var cli = new CliArgs(args);
-var doc = cli.Require("doc").Replace('\\', '/').TrimStart('/');
 var root = Repo.GetRoot(cli.Get("path") ?? ".");
+
+var rawDoc = cli.Require("doc");
+string doc;
+if (Path.IsPathFullyQualified(rawDoc))
+{
+    var rel = Path.GetRelativePath(root, Path.GetFullPath(rawDoc)).Replace('\\', '/');
+    if (rel.StartsWith("../", StringComparison.Ordinal) || Path.IsPathFullyQualified(rel))
+        return Json.Fail($"--doc '{rawDoc}' is outside the repository at '{root}'.",
+            "Pass the documentation path relative to the repository root, such as docs/rules/ABC1001.md, or point --path at the right repository.");
+    doc = rel;
+}
+else
+{
+    doc = rawDoc.Replace('\\', '/').TrimStart('/');
+}
+
 var config = new Config(root);
 var git = GitInfo.Read(root);
 

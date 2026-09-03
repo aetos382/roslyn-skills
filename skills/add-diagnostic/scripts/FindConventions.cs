@@ -18,6 +18,9 @@ using System.Xml;
 
 var cli = new CliArgs(args, "summary");
 var root = Repo.GetRoot(cli.Get("path") ?? ".");
+// Exclude any Claude Code plugin checked into the repository before scanning: this plugin's own
+// examples/ would otherwise be reported as the repository's diagnostics.
+var vendoredPlugins = Repo.FindVendoredPlugins(root);
 var config = new Config(root);
 
 // ---------------------------------------------------------------------------
@@ -39,41 +42,31 @@ var projects = new List<ProjectInfo>();
 foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringComparer.Ordinal))
 {
     var dir = Path.GetDirectoryName(csproj)!;
-    var buildFiles = new List<string> { csproj };
-    for (var probe = dir; probe is not null && probe.Length >= root.Length; probe = Path.GetDirectoryName(probe))
-    {
-        foreach (var n in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
-        {
-            var f = Path.Combine(probe, n);
-            if (File.Exists(f)) buildFiles.Add(f);
-        }
-        if (string.Equals(probe, root, StringComparison.OrdinalIgnoreCase)) break;
-    }
 
-    // A Visual Studio shared project (.shproj) contributes its files through <Import ...*.projitems>.
-    // Scanning the imported file lets its <Compile> items appear like any other linked source.
-    foreach (var bf in buildFiles.ToList())
+    // MSBuild imports the *first* Directory.Build.props / Directory.Build.targets found walking up from
+    // the project directory and stops there; NuGet does the same for Directory.Packages.props. A file
+    // further up is evaluated only when the found file imports it, so seed the queue with the first hit
+    // of each name and then follow imports (which also picks up a .shproj's .projitems).
+    var buildFiles = new List<string>();
+    var seenBuildFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var pending = new Queue<string>();
+    pending.Enqueue(csproj);
+    foreach (var n in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
+        if (FindFileAbove(dir, n, root) is { } found) pending.Enqueue(found);
+
+    while (pending.Count > 0 && buildFiles.Count < 32)
     {
-        try
-        {
-            XmlDocument ix = new();
-            ix.Load(bf);
-            var bfDir = Path.GetDirectoryName(bf)!;
-            foreach (XmlAttribute a in ix.SelectNodes("//*[local-name()='Import']/@Project")!)
-            {
-                if (!a.Value.EndsWith(".projitems", StringComparison.OrdinalIgnoreCase)) continue;
-                var p = (a.Value.Replace("$(MSBuildThisFileDirectory)", bfDir + "/")).Replace('\\', '/');
-                var full = Path.IsPathRooted(p) ? p : Path.Combine(bfDir, p);
-                if (File.Exists(full)) buildFiles.Add(Path.GetFullPath(full));
-            }
-        }
-        catch { }
+        var bf = pending.Dequeue();
+        if (!seenBuildFiles.Add(Path.GetFullPath(bf))) continue;
+        buildFiles.Add(bf);
+        foreach (var imported in ResolveImports(bf, root)) pending.Enqueue(imported);
     }
 
     var packageRefs = new SortedSet<string>(StringComparer.Ordinal);
     var projectRefs = new SortedSet<string>(StringComparer.Ordinal);
     var linked = new SortedSet<string>(StringComparer.Ordinal);
     var resxGenerators = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    string? neutralLanguage = null;
     foreach (var bf in buildFiles)
     {
         XmlDocument bx = new();
@@ -93,6 +86,15 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
             var p = Expand(a.Value);
             if (p.Contains("../") || p.Contains('/')) linked.Add(p);
         }
+        // <NeutralLanguage> generates NeutralResourcesLanguageAttribute and names the language of the
+        // neutral resx. The attribute can also be written by hand as an item or in source (checked below).
+        neutralLanguage ??= bx.SelectSingleNode("//*[local-name()='NeutralLanguage']")?.InnerText.Trim();
+        foreach (XmlElement aa in bx.SelectNodes("//*[local-name()='AssemblyAttribute']")!)
+        {
+            if (!aa.GetAttribute("Include").Contains("NeutralResourcesLanguage", StringComparison.OrdinalIgnoreCase)) continue;
+            var p1 = aa.SelectSingleNode("*[local-name()='_Parameter1']")?.InnerText.Trim() ?? aa.GetAttribute("_Parameter1");
+            if (!string.IsNullOrWhiteSpace(p1)) neutralLanguage ??= p1;
+        }
         foreach (XmlElement er in bx.SelectNodes("//*[local-name()='EmbeddedResource']")!)
         {
             var name = er.GetAttribute("Update");
@@ -107,6 +109,11 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
     foreach (var cs in Repo.Files(dir, "*.cs"))
     {
         var text = File.ReadAllText(cs);
+        if (neutralLanguage is null)
+        {
+            var nm = Regex.Match(text, @"assembly\s*:\s*NeutralResourcesLanguage(?:Attribute)?\s*\(\s*""(?<lang>[^""]+)""");
+            if (nm.Success) neutralLanguage = nm.Groups["lang"].Value;
+        }
         foreach (Match cm in classWithBases.Matches(text))
         {
             var bases = cm.Groups["bases"].Value;
@@ -144,7 +151,7 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
 
     projects.Add(new ProjectInfo(Path.GetFileNameWithoutExtension(csproj), Repo.Rel(root, csproj), Repo.Rel(root, dir), dir, kind, roles, classes,
         packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), resxGenerators,
-        packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator")));
+        packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"), neutralLanguage));
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +364,9 @@ foreach (var g in Repo.Files(root, "*.resx").GroupBy(f => (Dir: Path.GetDirector
         ["designerFile"] = File.Exists(designer) ? Repo.Rel(root, designer) : null,
         ["generator"] = generator,
         ["resourceClass"] = resourceClass,
+        // Language of the neutral file, from <NeutralLanguage> or NeutralResourcesLanguageAttribute.
+        // Null means the project never declared one; the existing entries are then the only evidence.
+        ["neutralLanguage"] = owner?.NeutralLanguage,
         ["localizableStringHelper"] = helper,
         ["localizableStringProperties"] = properties,
         ["requiresVisualStudioRegeneration"] = File.Exists(designer) && generator is not null && generator.Contains("ResXFileCodeGenerator"),
@@ -416,7 +426,7 @@ else
 // Directories that a repository plausibly uses for documentation, whatever it calls them.
 var docDirNameRegex = new Regex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase);
 var candidateDirs = Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
-    .Where(d => !Repo.IsBuildOutput(d) && docDirNameRegex.IsMatch(Path.GetFileName(d)))
+    .Where(d => !Repo.IsExcluded(d) && docDirNameRegex.IsMatch(Path.GetFileName(d)))
     .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
     .Select(d => Repo.Rel(root, d))
     .ToList();
@@ -568,6 +578,8 @@ if (cli.Has("summary"))
 Json.Print(new JsonObject
 {
     ["root"] = root.Replace('\\', '/'),
+    // Plugin trees skipped during the scan; their sample files are documentation, not this repository's code.
+    ["excludedPluginDirectories"] = Json.Array(vendoredPlugins.Select(p => Repo.Rel(root, p))),
     ["config"] = new JsonObject { ["path"] = Config.RelativePath, ["exists"] = config.Exists, ["values"] = config.ToJson(), ["notes"] = config.Body },
     ["diagnosticPrefix"] = prefix,
     ["projects"] = projectsJson,
@@ -582,10 +594,51 @@ Json.Print(new JsonObject
     ["git"] = gitJson,
 });
 
+/// <summary>The nearest file with the given name at or above <paramref name="startDir"/>, bounded by the repository root.</summary>
+static string? FindFileAbove(string startDir, string name, string root)
+{
+    for (var probe = startDir; probe is not null; probe = Path.GetDirectoryName(probe))
+    {
+        var f = Path.Combine(probe, name);
+        if (File.Exists(f)) return f;
+        if (string.Equals(probe, root, StringComparison.OrdinalIgnoreCase)) break;
+    }
+    return null;
+}
+
+/// <summary>
+/// Existing files named by the &lt;Import&gt; elements of an MSBuild file. Handles the two forms that appear
+/// in Directory.Build chaining — a plain relative path and $([MSBuild]::GetPathOfFileAbove('name', ...)) —
+/// plus $(MSBuildThisFileDirectory). Imports whose paths depend on properties this scanner cannot expand
+/// simply do not resolve to a file and are skipped.
+/// </summary>
+static IEnumerable<string> ResolveImports(string file, string root)
+{
+    var dir = Path.GetDirectoryName(Path.GetFullPath(file))!;
+    XmlDocument doc = new();
+    try { doc.Load(file); } catch { yield break; }
+    foreach (XmlAttribute a in doc.SelectNodes("//*[local-name()='Import']/@Project")!)
+    {
+        var raw = a.Value;
+        var above = Regex.Match(raw, @"GetPathOfFileAbove\(\s*'(?<name>[^']+)'");
+        if (above.Success)
+        {
+            var parent = Path.GetDirectoryName(dir);
+            if (parent is not null && FindFileAbove(parent, above.Groups["name"].Value, root) is { } found) yield return found;
+            continue;
+        }
+        var p = raw.Replace("$(MSBuildThisFileDirectory)", dir + "/").Replace('\\', '/');
+        if (p.Contains("$(")) continue;
+        var full = Path.IsPathRooted(p) ? p : Path.Combine(dir, p);
+        if (File.Exists(full)) yield return Path.GetFullPath(full);
+    }
+}
+
 sealed record ProjectInfo(
     string Name, string Path, string Directory, string FullDirectory, string Kind, List<string> Roles,
     Dictionary<string, List<(string Class, string File)>> Classes, List<string> PackageReferences, List<string> ProjectReferences,
-    List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator)
+    List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator,
+    string? NeutralLanguage)
 {
     public JsonObject ToJson()
     {
@@ -607,6 +660,7 @@ sealed record ProjectInfo(
             ["linkedCompileFiles"] = Json.Array(LinkedCompileFiles),
             ["resxGenerators"] = gens,
             ["usesResxSourceGenerator"] = UsesResxSourceGenerator,
+            ["neutralLanguage"] = NeutralLanguage,
         };
     }
 }

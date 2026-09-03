@@ -1,0 +1,13 @@
+<!--
+  Intentionally empty.
+
+  These scripts are file-based C# apps, and a file-based app inherits Directory.Build.props from the
+  directory of its .cs file upward, independently of the working directory. When the plugin is installed
+  inside a user's repository, that repository's build settings would otherwise reach the scripts: a
+  LangVersion below 8.0 alone stops them compiling. MSBuild stops at the first Directory.Build.props it
+  finds walking up, so this file blocks the search.
+
+  global.json is not inherited this way (the SDK is chosen from the working directory), and nuget.config
+  does not matter because the scripts reference no packages.
+-->
+<Project />
