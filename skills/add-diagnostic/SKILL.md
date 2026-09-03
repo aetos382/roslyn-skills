@@ -29,7 +29,7 @@ Four file-based C# apps live in `scripts/` and need the .NET 10 SDK, 10.0.300 or
 
 ```bash
 S="${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts"
-dotnet "$S/FindConventions.cs" -- --path .
+dotnet "$S/FindConventions.cs" -- --path . --summary > <scratchpad>/conventions.json   # then read that file
 dotnet "$S/NextId.cs" -- --ids-file src/X/DiagnosticIds.cs --category Usage
 dotnet "$S/NextId.cs" -- --ids-file src/X/DiagnosticIds.cs --prefix ABC --band 1   # fresh repository
 dotnet "$S/NextId.cs" -- --ids-file src/X/SuppressionIds.cs --suppression
@@ -44,11 +44,14 @@ this SKILL.md.) All four print JSON. Never guess what a script would return; run
 
 ### Step 1: Detect conventions
 
-Run `FindConventions.cs` from the repository root and read the JSON. The fields that drive every later
-step:
+Run `FindConventions.cs` from the repository root with `--summary`, redirecting to a file in the
+scratchpad, and read that file whole. Ask nothing in this step: collect what is undecided and put it in
+the single question round of Step 3. The fields that drive every later step:
 
 - `diagnosticPrefix`, `diagnosticIds`, `suppressionIds` — prefix, IDs file paths, class visibility, digit
   count, existing IDs, and category bands (`// Design (ABC1xxx)` headers).
+- `diagnosticCategories` — the class holding the `category` constants (path, class name, visibility,
+  existing values). Never search for it by hand; when it is null the repository has none.
 - `projects[]` — kind (`analyzer`, `codefix`, `generator`, `test`, `roslyn-component`, `other`) and
   the analyzer / suppressor / generator classes with their files.
 - `resx[]` — resource groups per project, all culture files, `resourceClass`, `localizableStringHelper`
@@ -59,8 +62,11 @@ step:
   (existing `docs` / `doc` / `Documentation` / `wiki` / `rules` folders, shallowest first),
   `mentionFiles` (Markdown elsewhere that names existing IDs), and `suggestedDirectory` (where a new
   page should go, `docs/rules` when nothing exists).
-- `analyzerReleases[]`, `git.docUrlTemplate`, `idSharing` (`ProjectReference`, `CompileInclude`,
-  `SharedProject`, or `none`), `diagnosticIdsProject`, `config`.
+- `analyzerReleases[]` — the Shipped/Unshipped pair per project, plus `analyzersPackage`
+  (`direct` / `viaCodeAnalysis` / `none`) and `declaredAsAdditionalFiles`, which say whether the
+  release-tracking analyzer can run at all.
+- `git.docUrlTemplate`, `idSharing` (`ProjectReference`, `CompileInclude`, `SharedProject`, or `none`),
+  `diagnosticIdsProject`, `config`.
 
 When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is
 null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough); ask
@@ -100,13 +106,21 @@ Draft before asking, so the user reviews concrete text rather than open question
    extending that file instead of creating a new layout.
 
 Then print the proposal as a short table in the message (name, ID band/category, title, message,
-description, target class, documentation yes/no) and, directly after it, ask in one `AskUserQuestion`
-round (at most four questions) only for what the user must decide: severity (unless the request
-already states it), category (when not inferred), message arguments (which values fill `{0}`, `{1}`),
-documentation (always, offering the proposed path and "skip"; never decide it silently), and
-`suppressedDiagnosticId` for suppressions. Keep question texts short; the table already carries
-the context, and the user can correct any row of it in the "Other" answer. Skip the round entirely
-when the request already settles everything. Re-draft once from the answers; do not loop.
+description, target class, documentation yes/no) and, directly after it, ask **one** `AskUserQuestion`
+round. It is the only round in the whole workflow: everything left open by Step 1 (the prefix, when
+`diagnosticPrefix` is null) and by this step goes into it. Candidates, in priority order when more than
+four exist:
+
+1. prefix (only when null; it names every future ID)
+2. severity
+3. `suppressedDiagnosticId` (suppressions only)
+4. message arguments
+5. category
+6. documentation
+
+Anything that does not fit stays in the table as a stated assumption the user can correct in an "Other"
+answer. Keep question texts short; the table carries the context. Skip the round entirely when the
+request already settles everything. Re-draft once from the answers; do not loop.
 
 Apply `customTags` only when required (`CompilationEnd`, `Unnecessary`, `NotConfigurable`; see
 `references/descriptors.md`), otherwise omit the argument.
@@ -128,7 +142,9 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   number (`references/id-conventions.md`, "Layout of the IDs file"). No `#region`. Create
   `DiagnosticIds.cs` / `SuppressionIds.cs` when missing (see Step 1 for how to derive them from
   `examples/`).
-- **5b. Categories class** (diagnostics only): add the constant when the category is new.
+- **5b. Categories class** (diagnostics only): add the constant when the category is new, to the class
+  named by `diagnosticCategories.path`. When that is null, create `DiagnosticCategories.cs` next to the
+  IDs file from `examples/DiagnosticCategories.cs`, matching the IDs class visibility.
 - **5c. Descriptor**: when documentation was requested, run `DocUrl.cs --doc <intended page path>` now
   (it needs only the path, not the file) and pass the URL as `helpLinkUri`; omit the argument otherwise.
   Decide how the strings reach the descriptor, in this order (`references/descriptors.md`,
@@ -141,7 +157,19 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
     3. Otherwise the helper is `internal`/`public` → call it directly.
     4. Otherwise mirror the neighbouring descriptor, or fall back to `new LocalizableResourceString(...)`.
   Add the `private static readonly` field named `{Name}` to the target class, mirroring the neighbouring
-  descriptor's style. Add the field to `SupportedDiagnostics` / `SupportedSuppressions` (source
+  descriptor's style. A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no
+  initializer**, which throws at runtime; adding the first descriptor means writing `= [Xxx];`, not
+  appending to an existing list. Severity is one decision spelled three ways, so convert it consistently
+  here and in 5e:
+
+  | User says | `defaultSeverity` | AnalyzerReleases `Severity` | `.editorconfig` |
+  |-----------|-------------------|-----------------------------|-----------------|
+  | error | `DiagnosticSeverity.Error` | `Error` | `error` |
+  | warning | `DiagnosticSeverity.Warning` | `Warning` | `warning` |
+  | suggestion, info | `DiagnosticSeverity.Info` | `Info` | `suggestion` |
+  | hidden, silent | `DiagnosticSeverity.Hidden` | `Hidden` | `silent` |
+
+  Add the field to `SupportedDiagnostics` / `SupportedSuppressions` (source
   generators have neither; the field alone suffices), using a collection expression `[ ... ]` when
   `LangVersion` is 12 or later. When the message has two or more placeholders, add a comment
   above the descriptor listing the argument order. Create the class from
@@ -175,8 +203,14 @@ into existing files; use `Write` only for new files.
 
 ### Step 6: Verify
 
-- Re-run `FindConventions.cs` and confirm the new ID appears under `diagnosticIds.ids` /
+- Re-run `FindConventions.cs --summary` and confirm the new ID appears under `diagnosticIds.ids` /
   `suppressionIds.ids`, and the resx report was `valid`.
+- **When 5e created the AnalyzerReleases pair for the first time**, prove the tracking analyzer actually
+  runs: delete the new row, build, confirm RS2000 is reported, then restore the row and build again. A
+  clean build alone is not evidence, because it is equally consistent with the analyzer not running.
+  `analyzerReleases[].analyzersPackage` of `viaCodeAnalysis` is a guess, not a guarantee; when RS2000
+  never appears, add `Microsoft.CodeAnalysis.Analyzers` (`PrivateAssets="all"`) and the two
+  `<AdditionalFiles>` items to the project. Skip this check when the pair already existed.
 - Grep the target project for the new name: the IDs file, the descriptor, `SupportedDiagnostics` (or
   `SupportedSuppressions`), and every resx must contain it.
 - Build the analyzer project (`dotnet build <csproj>`) **only when** `requiresVisualStudioRegeneration` is

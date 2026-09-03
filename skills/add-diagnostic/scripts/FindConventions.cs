@@ -3,7 +3,10 @@
 #:include Common.cs
 // FindConventions.cs — detects the conventions a Roslyn analyzer repository already uses and prints them as JSON.
 //
-// Usage:  dotnet FindConventions.cs -- [--path <repo-or-subdir>]
+// Usage:  dotnet FindConventions.cs -- [--path <repo-or-subdir>] [--summary]
+//
+// --summary drops the per-project package/project/file lists, which no step reads once the project kinds
+// and idSharing have been computed. Use it unless a raw reference list is needed.
 //
 // Output covers: projects (analyzer / codefix / generator / test), diagnostic and suppression ID files,
 // resx groups (with generator detection), AnalyzerReleases files, rule documentation, the optional
@@ -13,7 +16,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml;
 
-var cli = new CliArgs(args);
+var cli = new CliArgs(args, "summary");
 var root = Repo.GetRoot(cli.Get("path") ?? ".");
 var config = new Config(root);
 
@@ -50,6 +53,7 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
     var packageRefs = new SortedSet<string>(StringComparer.Ordinal);
     var projectRefs = new SortedSet<string>(StringComparer.Ordinal);
     var linked = new SortedSet<string>(StringComparer.Ordinal);
+    var additionalFiles = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
     var resxGenerators = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (var bf in buildFiles)
     {
@@ -70,6 +74,7 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
             var p = Expand(a.Value);
             if (p.Contains("../") || p.Contains('/')) linked.Add(p);
         }
+        foreach (XmlAttribute a in bx.SelectNodes("//AdditionalFiles/@Include")!) additionalFiles.Add(Path.GetFileName(a.Value.Replace('\\', '/')));
         foreach (XmlElement er in bx.SelectNodes("//EmbeddedResource")!)
         {
             var name = er.GetAttribute("Update");
@@ -120,13 +125,16 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         : "other";
 
     projects.Add(new ProjectInfo(Path.GetFileNameWithoutExtension(csproj), Repo.Rel(root, csproj), Repo.Rel(root, dir), dir, kind, roles, classes,
-        packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), resxGenerators, packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator")));
+        packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), additionalFiles.ToList(), resxGenerators,
+        packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator")));
 }
 
 // ---------------------------------------------------------------------------
 // ID files
 // ---------------------------------------------------------------------------
 var idFiles = new Dictionary<string, (List<IdConst> Ids, string? ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
+var categoryFiles = new Dictionary<string, (string ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
+var stringConstRegex = new Regex(@"(?m)^\s*(?:public|internal|private)?\s*const\s+string\s+(?<name>\w+)\s*=\s*""(?<value>[^""]*)""\s*;");
 foreach (var cs in Repo.Files(root, "*.cs"))
 {
     var text = File.ReadAllText(cs);
@@ -134,6 +142,8 @@ foreach (var cs in Repo.Files(root, "*.cs"))
     var (cls, vis) = IdsFileText.ReadClass(text);
     var looksLikeIdsFile = ids.Count > 0 || (cls is not null && Regex.IsMatch(cls, "Ids$|Identifiers$", RegexOptions.IgnoreCase));
     if (looksLikeIdsFile) idFiles[cs] = (ids, cls, vis, text);
+    // Categories class: DiagnosticCategories, Categories, RuleCategories, ...
+    if (cls is not null && cls.Contains("Categor", StringComparison.OrdinalIgnoreCase)) categoryFiles[cs] = (cls, vis, text);
 }
 
 // Diagnostic prefix: config wins; otherwise the most common letter group, ignoring groups that are
@@ -196,6 +206,44 @@ var diagIds = DescribeIdsFile(false, config.Get("diagnosticIdsFile"));
 var suppIds = DescribeIdsFile(true, config.Get("suppressionIdsFile"));
 if (diagIds is not null && suppIds is not null && diagIds["path"]!.ToString() == suppIds["path"]!.ToString())
     suppIds = null; // same file cannot be both; suppressions are expected in their own file
+
+// ---------------------------------------------------------------------------
+// Categories class (the constants passed as DiagnosticDescriptor.category)
+// ---------------------------------------------------------------------------
+JsonObject? categoriesInfo = null;
+{
+    string? file = null;
+    if (config.Get("categoriesFile") is { } cfgCat && File.Exists(Path.Combine(root, cfgCat)))
+        file = Path.GetFullPath(Path.Combine(root, cfgCat));
+    else if (categoryFiles.Count > 0)
+    {
+        // Prefer the categories class that sits next to the IDs file; otherwise the one with most constants.
+        var idsDir = diagIds is not null ? Path.GetDirectoryName(Path.Combine(root, diagIds["path"]!.ToString())) : null;
+        file = categoryFiles.Keys
+            .OrderByDescending(k => idsDir is not null && string.Equals(Path.GetDirectoryName(k), idsDir, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(k => stringConstRegex.Matches(categoryFiles[k].Text).Count)
+            .ThenBy(k => k, StringComparer.Ordinal)
+            .First();
+    }
+    if (file is not null)
+    {
+        if (!categoryFiles.TryGetValue(file, out var info))
+        {
+            var text = File.ReadAllText(file);
+            var (cls, vis) = IdsFileText.ReadClass(text);
+            info = (cls ?? "", vis, text);
+        }
+        var values = new JsonObject();
+        foreach (Match m in stringConstRegex.Matches(info.Text)) values[m.Groups["name"].Value] = m.Groups["value"].Value;
+        categoriesInfo = new JsonObject
+        {
+            ["path"] = Repo.Rel(root, file),
+            ["className"] = info.ClassName,
+            ["visibility"] = info.Visibility,
+            ["values"] = values,
+        };
+    }
+}
 
 // ---------------------------------------------------------------------------
 // resx groups
@@ -312,6 +360,14 @@ foreach (var p in projects)
             ["shipped"] = File.Exists(shipped) ? Repo.Rel(root, shipped) : null,
             ["unshipped"] = File.Exists(unshipped) ? Repo.Rel(root, unshipped) : null,
             ["expectedDirectory"] = p.Directory,
+            // Whether the release-tracking analyzer (RS2000-RS2008) can run at all. "viaCodeAnalysis" is a
+            // guess: Microsoft.CodeAnalysis.* pulls the analyzers package transitively, but PrivateAssets or
+            // ExcludeAssets can stop the analyzer from flowing, so a first-time setup needs the RS2000 check
+            // described in SKILL.md Step 6.
+            ["analyzersPackage"] = p.PackageReferences.Contains("Microsoft.CodeAnalysis.Analyzers") ? "direct"
+                : p.PackageReferences.Any(r => r.StartsWith("Microsoft.CodeAnalysis.", StringComparison.Ordinal)) ? "viaCodeAnalysis"
+                : "none",
+            ["declaredAsAdditionalFiles"] = p.AdditionalFiles.Any(f => f.StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase)),
         });
 }
 
@@ -456,14 +512,28 @@ if (sharing == "none")
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
+// --summary keeps only what the workflow reads: the projects a diagnostic can be added to, without the
+// reference lists that only fed kind detection and idSharing (both already computed above).
+var reported = cli.Has("summary")
+    ? projects.Where(p => p.Kind is "analyzer" or "generator" or "codefix" or "roslyn-component").ToList()
+    : projects;
+var projectsJson = Json.Array(reported.Select(p => (JsonNode?)p.ToJson()));
+if (cli.Has("summary"))
+{
+    foreach (var p in projectsJson.OfType<JsonObject>())
+        foreach (var key in new[] { "packageReferences", "projectReferences", "linkedCompileFiles", "additionalFiles", "resxGenerators" })
+            p.Remove(key);
+}
+
 Json.Print(new JsonObject
 {
     ["root"] = root.Replace('\\', '/'),
     ["config"] = new JsonObject { ["path"] = Config.RelativePath, ["exists"] = config.Exists, ["values"] = config.ToJson(), ["notes"] = config.Body },
     ["diagnosticPrefix"] = prefix,
-    ["projects"] = Json.Array(projects.Select(p => (JsonNode?)p.ToJson())),
+    ["projects"] = projectsJson,
     ["diagnosticIds"] = diagIds,
     ["suppressionIds"] = suppIds,
+    ["diagnosticCategories"] = categoriesInfo,
     ["idSharing"] = sharing,
     ["diagnosticIdsProject"] = idsProject?.Name,
     ["resx"] = resxGroups,
@@ -475,7 +545,7 @@ Json.Print(new JsonObject
 sealed record ProjectInfo(
     string Name, string Path, string Directory, string FullDirectory, string Kind, List<string> Roles,
     Dictionary<string, List<(string Class, string File)>> Classes, List<string> PackageReferences, List<string> ProjectReferences,
-    List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator)
+    List<string> LinkedCompileFiles, List<string> AdditionalFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator)
 {
     public JsonObject ToJson()
     {
@@ -495,6 +565,7 @@ sealed record ProjectInfo(
             ["packageReferences"] = Json.Array(PackageReferences),
             ["projectReferences"] = Json.Array(ProjectReferences),
             ["linkedCompileFiles"] = Json.Array(LinkedCompileFiles),
+            ["additionalFiles"] = Json.Array(AdditionalFiles),
             ["resxGenerators"] = gens,
             ["usesResxSourceGenerator"] = UsesResxSourceGenerator,
         };

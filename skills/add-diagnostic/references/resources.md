@@ -86,3 +86,6 @@ mention this in the final summary when it applies; it is the one step the skill 
 - Do not add `<comment>` elements unless the file already uses them for diagnostic strings.
 - Do not touch the `resheader` elements or any `metadata`/`assembly` nodes.
 - Keep the declaration `<?xml version="1.0" encoding="utf-8"?>` and the UTF-8 BOM if the file has one.
+- The script reproduces the file's existing shape, including the absence of a trailing newline after
+  `</root>`. That is deliberate: matching Visual Studio's output keeps the diff to the added entries,
+  even when `.editorconfig` sets `insert_final_newline`.
