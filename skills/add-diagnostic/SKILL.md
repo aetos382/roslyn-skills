@@ -24,8 +24,11 @@ for it before anything else.
 ## Scripts
 
 Four file-based C# apps live in `scripts/` and need the .NET 10 SDK, 10.0.300 or later (they share
-`Common.cs` through `#:include`, which older SDKs do not support). Run them with
-`dotnet <file>.cs -- <options>`; the first run compiles and later runs are cached. From Bash:
+`Common.cs` through `#:include`, which older SDKs do not support). `FindConventions.cs` additionally runs
+`dotnet msbuild` once per project, in parallel, so project data comes from a real evaluation rather than
+from reading XML: custom `.props`/`.targets`, central package management and conditions are all resolved.
+Expect a second or two on a small repository. Run them with `dotnet <file>.cs -- <options>`; the first run
+compiles and later runs are cached. From Bash:
 
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
@@ -44,6 +47,10 @@ dotnet "$S/DocUrl.cs" -- --doc docs/rules/ABC1001.md --path "$R"      # --doc st
 Three separate locations are in play: the working directory decides which SDK runs, the script path is
 in the plugin, and the arguments name the repository. Only `--doc` is repository-relative, because it
 becomes part of a URL; everything else is an absolute path.
+
+Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow runs, so no MSBuild
+worker process outlives it holding file locks. `FindConventions.cs` already does this internally. The
+switch is spelled `-nodeReuse:false` or `-nr:false`; `/node-reuse:false` is rejected with MSB1001.
 
 `CLAUDE_PLUGIN_ROOT` is often unset, in Bash as well as in PowerShell (`$env:CLAUDE_PLUGIN_ROOT`); fall
 back to the base directory given when this skill was loaded. All four scripts print JSON, including for
@@ -72,8 +79,10 @@ in the single question round of Step 3.
   count, existing IDs, and category bands (`// Design (ABC1xxx)` headers).
 - `diagnosticCategories` — the class holding the `category` constants (path, class name, visibility,
   existing values). Never search for it by hand; when it is null the repository has none.
-- `projects[]` — kind (`analyzer`, `codefix`, `generator`, `test`, `roslyn-component`, `other`) and
-  the analyzer / suppressor / generator classes with their files.
+- `projects[]` — kind (`analyzer`, `codefix`, `generator`, `test`, `roslyn-component`, `other`), the
+  analyzer / suppressor / generator classes with their files, and `langVersion`, `targetFrameworks`,
+  `neutralLanguage`. A non-null `evaluationError` means MSBuild could not evaluate that project, so its
+  package, reference and resource data is missing: say so rather than treating the project as empty.
 - `resx[]` — resource groups per project, all culture files, `resourceClass`, `neutralLanguage`
   (the language of the neutral file, null when the project declares none), `localizableStringHelper`
   (a hand-written `GetLocalizableResourceString(string)`-style method with its `accessibility`),
@@ -250,7 +259,7 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   can move them safely. Read each report: when `valid` is false, restore from the scratchpad copies and
   stop. Never edit `*.Designer.cs` (`references/resources.md`).
 - **5e. AnalyzerReleases.Unshipped.md** (diagnostics only): build the analyzer project **before** adding
-  the row. The descriptor from 5c now exists with no row to match it, so a working release-tracking
+  the row, with `dotnet build <csproj> -nodeReuse:false` from inside the repository. The descriptor from 5c now exists with no row to match it, so a working release-tracking
   analyzer reports **RS2000** for the new ID, or **RS2008** ("enable analyzer release tracking") when the
   release files do not exist yet. Either one proves tracking runs, and it costs one build with no file to
   restore; a clean build after the row is added proves nothing, since it is equally consistent with the
@@ -291,7 +300,7 @@ into existing files; use `Write` only for new files.
 - Confirm the RS2000 or RS2008 observation from 5e happened and that the row now silences it.
 - Grep the target project for the new name: the IDs file, the descriptor, `SupportedDiagnostics` (or
   `SupportedSuppressions`), and every resx must contain it.
-- Build the analyzer project (`dotnet build <csproj>`) **only when** `requiresVisualStudioRegeneration` is
+- Build the analyzer project (`dotnet build <csproj> -nodeReuse:false`) **only when** `requiresVisualStudioRegeneration` is
   false; when it is true the build is expected to fail with CS0117 until Visual Studio regenerates
   `Resources.Designer.cs`, so skip the build and say so. Fix every warning the new code introduced
   (compare against a build before the change when unsure); under `EnforceCodeStyleInBuild` with

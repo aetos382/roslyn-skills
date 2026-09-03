@@ -14,7 +14,6 @@
 
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using System.Xml;
 
 var cli = new CliArgs(args, "summary");
 var root = Repo.GetRoot(cli.Get("path") ?? ".");
@@ -38,75 +37,56 @@ var roleBaseTypes = new Dictionary<string, Regex>
 };
 var classWithBases = new Regex(@"\bclass\s+(?<name>\w+)\s*(?:<[^>]*>)?\s*:\s*(?<bases>[^{;]*)\{", RegexOptions.Singleline);
 
+// Project data comes from MSBuild itself rather than from reading the XML: only a real evaluation knows
+// what custom .props/.targets, imported .projitems, central package management and conditions produce.
+var csprojFiles = Repo.Files(root, "*.csproj").OrderBy(p => p, StringComparer.Ordinal).ToList();
+var evaluations = MsBuild.EvaluateAll(csprojFiles);
+
 var projects = new List<ProjectInfo>();
-foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringComparer.Ordinal))
+foreach (var csproj in csprojFiles)
 {
     var dir = Path.GetDirectoryName(csproj)!;
-
-    // MSBuild imports the *first* Directory.Build.props / Directory.Build.targets found walking up from
-    // the project directory and stops there; NuGet does the same for Directory.Packages.props. A file
-    // further up is evaluated only when the found file imports it, so seed the queue with the first hit
-    // of each name and then follow imports (which also picks up a .shproj's .projitems).
-    var buildFiles = new List<string>();
-    var seenBuildFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    var pending = new Queue<string>();
-    pending.Enqueue(csproj);
-    foreach (var n in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
-        if (FindFileAbove(dir, n, root) is { } found) pending.Enqueue(found);
-
-    while (pending.Count > 0 && buildFiles.Count < 32)
-    {
-        var bf = pending.Dequeue();
-        if (!seenBuildFiles.Add(Path.GetFullPath(bf))) continue;
-        buildFiles.Add(bf);
-        foreach (var imported in ResolveImports(bf, root)) pending.Enqueue(imported);
-    }
+    var ev = evaluations[csproj];
 
     var packageRefs = new SortedSet<string>(StringComparer.Ordinal);
     var projectRefs = new SortedSet<string>(StringComparer.Ordinal);
     var linked = new SortedSet<string>(StringComparer.Ordinal);
     var resxGenerators = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    string? neutralLanguage = null;
-    foreach (var bf in buildFiles)
-    {
-        XmlDocument bx = new();
-        try { bx.Load(bf); } catch { continue; }
-        var bfDir = Path.GetDirectoryName(bf)!;
-        string Expand(string v) => v.Replace("$(MSBuildThisFileDirectory)", bfDir + "/").Replace('\\', '/');
-        // GlobalPackageReference (Central Package Management) applies to every project, so treat it like PackageReference.
-        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='PackageReference' or local-name()='GlobalPackageReference']/@Include")!) packageRefs.Add(a.Value);
-        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='ProjectReference']/@Include")!)
-        {
-            var p = Expand(a.Value);
-            var full = Path.IsPathRooted(p) ? p : Path.Combine(bfDir, p);
-            projectRefs.Add(File.Exists(full) ? Repo.Rel(root, Path.GetFullPath(full)) : p);
-        }
-        foreach (XmlAttribute a in bx.SelectNodes("//*[local-name()='Compile']/@Include")!)
-        {
-            var p = Expand(a.Value);
-            if (p.Contains("../") || p.Contains('/')) linked.Add(p);
-        }
-        // <NeutralLanguage> generates NeutralResourcesLanguageAttribute and names the language of the
-        // neutral resx. The attribute can also be written by hand as an item or in source (checked below).
-        neutralLanguage ??= bx.SelectSingleNode("//*[local-name()='NeutralLanguage']")?.InnerText.Trim();
-        foreach (XmlElement aa in bx.SelectNodes("//*[local-name()='AssemblyAttribute']")!)
-        {
-            if (!aa.GetAttribute("Include").Contains("NeutralResourcesLanguage", StringComparison.OrdinalIgnoreCase)) continue;
-            var p1 = aa.SelectSingleNode("*[local-name()='_Parameter1']")?.InnerText.Trim() ?? aa.GetAttribute("_Parameter1");
-            if (!string.IsNullOrWhiteSpace(p1)) neutralLanguage ??= p1;
-        }
-        foreach (XmlElement er in bx.SelectNodes("//*[local-name()='EmbeddedResource']")!)
-        {
-            var name = er.GetAttribute("Update");
-            if (name.Length == 0) name = er.GetAttribute("Include");
-            var gen = er.SelectSingleNode("Generator")?.InnerText ?? (er.HasAttribute("Generator") ? er.GetAttribute("Generator") : null);
-            if (name.Length > 0 && !string.IsNullOrWhiteSpace(gen)) resxGenerators[Path.GetFileName(name)] = gen.Trim();
-        }
-    }
+
+    foreach (var i in ev.Items("PackageReference")) packageRefs.Add(i.Identity);
+    foreach (var i in ev.Items("ProjectReference"))
+        projectRefs.Add(i.FullPath is { } fp ? Repo.Rel(root, fp) : i.Identity);
+    // A Compile item resolving outside the project directory is a linked file: the analyzer's IDs file
+    // pulled into the code-fix project, or a shared file (directly, or through a .shproj's .projitems).
+    foreach (var i in ev.Items("Compile"))
+        if (i.FullPath is { } fp && !fp.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            linked.Add(Repo.Rel(root, fp));
+    foreach (var i in ev.Items("EmbeddedResource"))
+        if (i.Metadata.TryGetValue("Generator", out var gen) && !string.IsNullOrWhiteSpace(gen))
+            resxGenerators[Path.GetFileName((i.FullPath ?? i.Identity).Replace('\\', '/'))] = gen.Trim();
+
+    // The neutral resx language, from the three places it can be declared: the NeutralLanguage property,
+    // an AssemblyAttribute item carrying NeutralResourcesLanguageAttribute, and — since evaluation cannot
+    // see into source — a hand-written [assembly: NeutralResourcesLanguage("...")], found by the .cs scan.
+    var neutralLanguage = ev.Property("NeutralLanguage");
+    neutralLanguage ??= ev.Items("AssemblyAttribute")
+        .Where(i => i.Identity.Contains("NeutralResourcesLanguage", StringComparison.OrdinalIgnoreCase))
+        .Select(i => i.Metadata.TryGetValue("_Parameter1", out var p) ? p.Trim() : null)
+        .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
+
+    // Files under the project directory, plus the evaluated Compile items, which add the linked files an
+    // AssemblyInfo.cs or a shared analyzer class may live in. Both halves are needed: a multi-targeting
+    // project's outer build reports only explicitly written Compile items, not the SDK's default glob,
+    // so evaluation alone would miss the project's own sources. Generated files under obj/ stay excluded.
+    var sourceFiles = Repo.Files(dir, "*.cs")
+        .Concat(ev.Items("Compile").Select(i => i.FullPath).OfType<string>()
+            .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !Repo.IsExcluded(f) && File.Exists(f)))
+        .Select(Path.GetFullPath)
+        .Distinct(StringComparer.OrdinalIgnoreCase);
 
     var roles = new List<string>();
     var classes = new Dictionary<string, List<(string Class, string File)>>();
-    foreach (var cs in Repo.Files(dir, "*.cs"))
+    foreach (var cs in sourceFiles.OrderBy(f => f, StringComparer.Ordinal))
     {
         var text = File.ReadAllText(cs);
         if (neutralLanguage is null)
@@ -128,19 +108,8 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         }
     }
 
-    // Test projects: testing packages, a test SDK (MSTest.Sdk), or an explicit IsTestProject property.
-    var sdkAttr = "";
-    var isTestProjectProp = false;
-    try
-    {
-        var px = new XmlDocument();
-        px.Load(csproj);
-        sdkAttr = px.DocumentElement?.GetAttribute("Sdk") ?? "";
-        isTestProjectProp = string.Equals(px.SelectSingleNode("//*[local-name()='IsTestProject']")?.InnerText.Trim(), "true", StringComparison.OrdinalIgnoreCase);
-    }
-    catch { }
-    var isTest = isTestProjectProp
-        || sdkAttr.Contains("MSTest.Sdk", StringComparison.OrdinalIgnoreCase)
+    // Test projects: the property a test SDK sets, the MSTest SDK marker, or a testing package.
+    var isTest = ev.IsTrue("IsTestProject") || ev.IsTrue("UsingMSTestSdk")
         || packageRefs.Any(p => Regex.IsMatch(p, @"Microsoft\.CodeAnalysis\.\w+\.Testing|^xunit|MSTest|NUnit|TUnit"));
     var kind = isTest ? "test"
         : roles.Contains("codefix") || roles.Contains("refactoring") ? "codefix"
@@ -151,7 +120,8 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
 
     projects.Add(new ProjectInfo(Path.GetFileNameWithoutExtension(csproj), Repo.Rel(root, csproj), Repo.Rel(root, dir), dir, kind, roles, classes,
         packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), resxGenerators,
-        packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"), neutralLanguage));
+        packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"), neutralLanguage,
+        ev.Property("LangVersion"), ev.Property("TargetFrameworks") ?? ev.Property("TargetFramework"), ev.Error));
 }
 
 // ---------------------------------------------------------------------------
@@ -594,51 +564,103 @@ Json.Print(new JsonObject
     ["git"] = gitJson,
 });
 
-/// <summary>The nearest file with the given name at or above <paramref name="startDir"/>, bounded by the repository root.</summary>
-static string? FindFileAbove(string startDir, string name, string root)
+/// <summary>One evaluated MSBuild item: its identity, resolved path, and metadata.</summary>
+sealed record MsBuildItem(string Identity, string? FullPath, Dictionary<string, string> Metadata);
+
+/// <summary>The result of evaluating one project, or the reason evaluation failed.</summary>
+sealed class Evaluation
 {
-    for (var probe = startDir; probe is not null; probe = Path.GetDirectoryName(probe))
+    private static readonly HashSet<string> ItemNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _properties = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<MsBuildItem>> _items = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? Error { get; private init; }
+
+    public string? Property(string name) =>
+        _properties.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : null;
+
+    public bool IsTrue(string name) => string.Equals(Property(name), "true", StringComparison.OrdinalIgnoreCase);
+
+    public IReadOnlyList<MsBuildItem> Items(string name) =>
+        _items.TryGetValue(name, out var list) ? list : Array.Empty<MsBuildItem>();
+
+    public static Evaluation Failed(string error) => new() { Error = error };
+
+    public static Evaluation Parse(string json)
     {
-        var f = Path.Combine(probe, name);
-        if (File.Exists(f)) return f;
-        if (string.Equals(probe, root, StringComparison.OrdinalIgnoreCase)) break;
+        var e = new Evaluation();
+        if (JsonNode.Parse(json) is not JsonObject o) return Failed("MSBuild returned output that is not JSON.");
+        if (o["Properties"] is JsonObject props)
+            foreach (var (k, v) in props) e._properties[k] = v?.ToString() ?? "";
+        if (o["Items"] is JsonObject items)
+        {
+            foreach (var (name, arr) in items)
+            {
+                var list = new List<MsBuildItem>();
+                foreach (var n in arr as JsonArray ?? new JsonArray())
+                {
+                    if (n is not JsonObject io) continue;
+                    var meta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (mk, mv) in io) meta[mk] = mv?.ToString() ?? "";
+                    meta.TryGetValue("Identity", out var identity);
+                    meta.TryGetValue("FullPath", out var fullPath);
+                    list.Add(new MsBuildItem(identity ?? "", string.IsNullOrWhiteSpace(fullPath) ? null : fullPath, meta));
+                }
+                e._items[name] = list;
+            }
+        }
+        return e;
     }
-    return null;
 }
 
-/// <summary>
-/// Existing files named by the &lt;Import&gt; elements of an MSBuild file. Handles the two forms that appear
-/// in Directory.Build chaining — a plain relative path and $([MSBuild]::GetPathOfFileAbove('name', ...)) —
-/// plus $(MSBuildThisFileDirectory). Imports whose paths depend on properties this scanner cannot expand
-/// simply do not resolve to a file and are skipped.
-/// </summary>
-static IEnumerable<string> ResolveImports(string file, string root)
+static class MsBuild
 {
-    var dir = Path.GetDirectoryName(Path.GetFullPath(file))!;
-    XmlDocument doc = new();
-    try { doc.Load(file); } catch { yield break; }
-    foreach (XmlAttribute a in doc.SelectNodes("//*[local-name()='Import']/@Project")!)
+    // Properties and items the workflow reads. Requesting at least one item keeps the output JSON, which a
+    // single -getProperty would not be.
+    private static readonly string[] Properties =
+        ["NeutralLanguage", "LangVersion", "TargetFramework", "TargetFrameworks", "IsTestProject", "UsingMSTestSdk"];
+    private static readonly string[] Items =
+        ["PackageReference", "ProjectReference", "Compile", "EmbeddedResource", "AssemblyAttribute"];
+
+    /// <summary>
+    /// Evaluates every project in parallel. The working directory is left alone: it is the caller's
+    /// scratchpad, so the SDK comes from there rather than from a global.json inside the repository, which
+    /// may pin a version that is not installed.
+    /// </summary>
+    public static Dictionary<string, Evaluation> EvaluateAll(IReadOnlyList<string> projects)
     {
-        var raw = a.Value;
-        var above = Regex.Match(raw, @"GetPathOfFileAbove\(\s*'(?<name>[^']+)'");
-        if (above.Success)
-        {
-            var parent = Path.GetDirectoryName(dir);
-            if (parent is not null && FindFileAbove(parent, above.Groups["name"].Value, root) is { } found) yield return found;
-            continue;
-        }
-        var p = raw.Replace("$(MSBuildThisFileDirectory)", dir + "/").Replace('\\', '/');
-        if (p.Contains("$(")) continue;
-        var full = Path.IsPathRooted(p) ? p : Path.Combine(dir, p);
-        if (File.Exists(full)) yield return Path.GetFullPath(full);
+        var results = new System.Collections.Concurrent.ConcurrentDictionary<string, Evaluation>(StringComparer.OrdinalIgnoreCase);
+        Parallel.ForEach(projects, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount / 2) },
+            p => results[p] = Evaluate(p));
+        return projects.ToDictionary(p => p, p => results[p], StringComparer.OrdinalIgnoreCase);
     }
+
+    private static Evaluation Evaluate(string project)
+    {
+        // -nodeReuse:false so no MSBuild worker process outlives the scan holding file locks.
+        var args = new List<string> { "msbuild", project, "-nologo", "-nodeReuse:false" };
+        args.AddRange(Properties.Select(p => "-getProperty:" + p));
+        args.AddRange(Items.Select(i => "-getItem:" + i));
+
+        var (exit, stdout, stderr) = Shell.Exec("dotnet", args);
+        if (exit != 0)
+        {
+            var message = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+            return Evaluation.Failed(FirstLines(message, 3));
+        }
+        try { return Evaluation.Parse(stdout); }
+        catch (Exception ex) { return Evaluation.Failed(ex.Message); }
+    }
+
+    private static string FirstLines(string text, int count) =>
+        string.Join(" ", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(count));
 }
 
 sealed record ProjectInfo(
     string Name, string Path, string Directory, string FullDirectory, string Kind, List<string> Roles,
     Dictionary<string, List<(string Class, string File)>> Classes, List<string> PackageReferences, List<string> ProjectReferences,
     List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator,
-    string? NeutralLanguage)
+    string? NeutralLanguage, string? LangVersion, string? TargetFrameworks, string? EvaluationError)
 {
     public JsonObject ToJson()
     {
@@ -661,6 +683,11 @@ sealed record ProjectInfo(
             ["resxGenerators"] = gens,
             ["usesResxSourceGenerator"] = UsesResxSourceGenerator,
             ["neutralLanguage"] = NeutralLanguage,
+            ["langVersion"] = LangVersion,
+            ["targetFrameworks"] = TargetFrameworks,
+            // Non-null when MSBuild could not evaluate the project: every field above is then a guess
+            // based on source files alone. Report it rather than treating the project as empty.
+            ["evaluationError"] = EvaluationError,
         };
     }
 }
