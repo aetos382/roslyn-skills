@@ -20,13 +20,24 @@ The skill does not implement analysis logic, code fixes, or tests; it prepares e
 
 ## Installation
 
-Local development:
+This repository is its own plugin marketplace. In Claude Code:
+
+```
+/plugin marketplace add aetos382/roslyn-skills
+/plugin install roslyn-skills@roslyn-skills
+```
+
+Pick up later changes with:
+
+```
+/plugin marketplace update roslyn-skills
+```
+
+To work on the plugin itself, load a clone directly instead:
 
 ```bash
 claude --plugin-dir /path/to/roslyn-skills
 ```
-
-From a marketplace, add the repository as a marketplace source and install `roslyn-skills`.
 
 ## Conventions the skill enforces
 
@@ -73,7 +84,9 @@ Every key is optional. See `skills/add-diagnostic/examples/roslyn-skills.md` for
 
 ```
 roslyn-skills/
-├── .claude-plugin/plugin.json
+├── .claude-plugin/
+│   ├── plugin.json        # plugin manifest
+│   └── marketplace.json   # makes this repository installable as a marketplace
 ├── README.md
 └── skills/
     └── add-diagnostic/

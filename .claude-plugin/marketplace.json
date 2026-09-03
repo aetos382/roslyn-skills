@@ -1,0 +1,15 @@
+{
+  "name": "roslyn-skills",
+  "description": "Skills for developing Roslyn analyzers, code fixes, source generators, and diagnostic suppressors.",
+  "owner": {
+    "name": "aetos",
+    "url": "https://github.com/aetos382"
+  },
+  "plugins": [
+    {
+      "name": "roslyn-skills",
+      "source": "./",
+      "description": "Adds a Roslyn diagnostic or suppression end to end: ID constant, DiagnosticDescriptor, resx strings, AnalyzerReleases row, and rule documentation, following the repository's existing conventions."
+    }
+  ]
+}
