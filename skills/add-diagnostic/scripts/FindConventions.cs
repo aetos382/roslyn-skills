@@ -68,6 +68,13 @@ foreach (var csproj in csprojFiles)
     // The neutral resx language, from the three places it can be declared: the NeutralLanguage property,
     // an AssemblyAttribute item carrying NeutralResourcesLanguageAttribute, and — since evaluation cannot
     // see into source — a hand-written [assembly: NeutralResourcesLanguage("...")], found by the .cs scan.
+    //
+    // All three collapse into obj/<project>.AssemblyInfo.cs, and then into the assembly, either of which
+    // would answer this outright. Neither is read: both exist only after a build, and this runs on
+    // repositories that have never been built. The generated file is also invisible to evaluation (the
+    // target that writes it is the one that adds it to Compile), and locating the assembly means resolving
+    // TargetPath, which is empty for the outer build of a multi-targeting project. See
+    // references/resources.md, "Which files to edit".
     var neutralLanguage = ev.Property("NeutralLanguage");
     neutralLanguage ??= ev.Items("AssemblyAttribute")
         .Where(i => i.Identity.Contains("NeutralResourcesLanguage", StringComparison.OrdinalIgnoreCase))

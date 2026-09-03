@@ -37,6 +37,17 @@
    English only when the file is empty. A project whose neutral language is `ja` and which also has a
    `Resources.ja.resx` is duplicating itself: mention it in the report rather than silently writing both.
 
+   Two sources would answer this more authoritatively and are deliberately not used, because both require
+   the project to have been built and the skill routinely runs on one that has not:
+
+   | Source | Why it is not read |
+   |--------|--------------------|
+   | `obj/<project>.AssemblyInfo.cs`, where every declaration form ends up as `[assembly: NeutralResourcesLanguage(...)]` | Written by a build-time target, so it is absent before the first build. Measured: even after a build it never appears among an evaluation's `Compile` items, because the target that generates the file is also the one that adds it. Reading it would mean running a build or reaching into `obj/`, which the scan excludes as build output. |
+   | The compiled assembly, read with `System.Reflection.Metadata` | The most reliable answer of all, since property, item and source attribute have collapsed into one by then, and it would even catch an attribute added by a source generator or a weaving step. It still needs a successful build, and `TargetPath` is empty for the outer build of a multi-targeting project, so locating the assembly is its own problem. |
+
+   The three declaration sites cover every way the attribute is written by hand, which is what matters
+   here. Reading the build output would only add cases where something else generated the attribute.
+
    Never write the source text into a satellite file. A missing entry falls back to the neutral resource
    and is visibly untranslated, but source text sitting in `Resources.ja.resx` looks finished and stays
    wrong. When a translation cannot be produced with confidence, leave that file out and say so in the
