@@ -60,9 +60,14 @@ CTS1001 | Design | Warning | Design | Info | Promoted after stabilizing
    - `AnalyzerReleases.Shipped.md` with only the two comment lines (`; Shipped analyzer releases` and the
      help URL).
    - `AnalyzerReleases.Unshipped.md` from `examples/AnalyzerReleases.Unshipped.md`, replacing the rows.
-   Then check the csproj: if `Microsoft.CodeAnalysis.Analyzers` is not referenced (directly or through
-   `Microsoft.CodeAnalysis.CSharp`), add `<AdditionalFiles Include="AnalyzerReleases.Shipped.md" />` and
-   the Unshipped counterpart so the files travel with the project.
+   Do not add `<AdditionalFiles>` items for them. Recent SDKs register `AnalyzerReleases.*.md` as
+   additional files implicitly, so their absence from the project file means nothing; adding the items
+   by hand is noise, and in the worst case a duplicate.
+
+Whether tracking actually runs is only observable, never inferable: build once while the descriptor
+exists and its row does not, and look for RS2000 (SKILL.md 5e). A clean build proves nothing, because a
+tracking analyzer that never loads also produces one. If RS2000 does not appear, reference
+`Microsoft.CodeAnalysis.Analyzers` directly with `PrivateAssets="all"`.
 
 Use CRLF or LF to match the existing file. End the file with a single newline.
 

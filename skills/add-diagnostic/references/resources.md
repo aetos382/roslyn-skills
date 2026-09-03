@@ -57,8 +57,10 @@ The script:
 - reports whether a sibling `*.Designer.cs` exists and lacks the new names (`designerStale`);
 - exits with code 1 when any file fails validation.
 
-Read the JSON report. If `valid` is false, restore the file from git (`git checkout -- <file>`) and fix the
-cause before retrying; never leave a broken resx behind.
+Copy every culture file to the scratchpad before running the script. Read the JSON report; if `valid` is
+false, restore from those copies and fix the cause before retrying. Never leave a broken resx behind, and
+never recover with `git checkout --`: a resx routinely holds uncommitted work that git would discard
+along with the failed insertion.
 
 For a one-off manual edit, insert the same XML by hand and run the script with `--validate-only` afterwards.
 

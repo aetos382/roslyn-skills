@@ -6,6 +6,8 @@
 | [CTS1002](CTS1002.md) | Abstract type should not have public constructor | Design | Info |
 | [CTS2001](CTS2001.md) | Task should be awaited | Usage | Warning |
 
+<!-- Omit the section below when the repository has no diagnostic suppressors. -->
+
 ## Suppressions
 
 | ID | Suppresses | Justification |

@@ -53,7 +53,6 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
     var packageRefs = new SortedSet<string>(StringComparer.Ordinal);
     var projectRefs = new SortedSet<string>(StringComparer.Ordinal);
     var linked = new SortedSet<string>(StringComparer.Ordinal);
-    var additionalFiles = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
     var resxGenerators = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (var bf in buildFiles)
     {
@@ -74,7 +73,6 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
             var p = Expand(a.Value);
             if (p.Contains("../") || p.Contains('/')) linked.Add(p);
         }
-        foreach (XmlAttribute a in bx.SelectNodes("//AdditionalFiles/@Include")!) additionalFiles.Add(Path.GetFileName(a.Value.Replace('\\', '/')));
         foreach (XmlElement er in bx.SelectNodes("//EmbeddedResource")!)
         {
             var name = er.GetAttribute("Update");
@@ -125,7 +123,7 @@ foreach (var csproj in Repo.Files(root, "*.csproj").OrderBy(p => p, StringCompar
         : "other";
 
     projects.Add(new ProjectInfo(Path.GetFileNameWithoutExtension(csproj), Repo.Rel(root, csproj), Repo.Rel(root, dir), dir, kind, roles, classes,
-        packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), additionalFiles.ToList(), resxGenerators,
+        packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), resxGenerators,
         packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator")));
 }
 
@@ -360,14 +358,13 @@ foreach (var p in projects)
             ["shipped"] = File.Exists(shipped) ? Repo.Rel(root, shipped) : null,
             ["unshipped"] = File.Exists(unshipped) ? Repo.Rel(root, unshipped) : null,
             ["expectedDirectory"] = p.Directory,
-            // Whether the release-tracking analyzer (RS2000-RS2008) can run at all. "viaCodeAnalysis" is a
-            // guess: Microsoft.CodeAnalysis.* pulls the analyzers package transitively, but PrivateAssets or
-            // ExcludeAssets can stop the analyzer from flowing, so a first-time setup needs the RS2000 check
-            // described in SKILL.md Step 6.
+            // Whether the release-tracking analyzer (RS2000-RS2008) is reachable at all. Both values are
+            // weak: the package flows transitively from Microsoft.CodeAnalysis.*, and the SDK registers the
+            // AnalyzerReleases files as AdditionalFiles implicitly, so neither the package list nor the
+            // project file proves anything. Only the RS2000 observation in SKILL.md 5e does.
             ["analyzersPackage"] = p.PackageReferences.Contains("Microsoft.CodeAnalysis.Analyzers") ? "direct"
                 : p.PackageReferences.Any(r => r.StartsWith("Microsoft.CodeAnalysis.", StringComparison.Ordinal)) ? "viaCodeAnalysis"
                 : "none",
-            ["declaredAsAdditionalFiles"] = p.AdditionalFiles.Any(f => f.StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase)),
         });
 }
 
@@ -521,7 +518,7 @@ var projectsJson = Json.Array(reported.Select(p => (JsonNode?)p.ToJson()));
 if (cli.Has("summary"))
 {
     foreach (var p in projectsJson.OfType<JsonObject>())
-        foreach (var key in new[] { "packageReferences", "projectReferences", "linkedCompileFiles", "additionalFiles", "resxGenerators" })
+        foreach (var key in new[] { "packageReferences", "projectReferences", "linkedCompileFiles", "resxGenerators" })
             p.Remove(key);
 }
 
@@ -545,7 +542,7 @@ Json.Print(new JsonObject
 sealed record ProjectInfo(
     string Name, string Path, string Directory, string FullDirectory, string Kind, List<string> Roles,
     Dictionary<string, List<(string Class, string File)>> Classes, List<string> PackageReferences, List<string> ProjectReferences,
-    List<string> LinkedCompileFiles, List<string> AdditionalFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator)
+    List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator)
 {
     public JsonObject ToJson()
     {
@@ -565,7 +562,6 @@ sealed record ProjectInfo(
             ["packageReferences"] = Json.Array(PackageReferences),
             ["projectReferences"] = Json.Array(ProjectReferences),
             ["linkedCompileFiles"] = Json.Array(LinkedCompileFiles),
-            ["additionalFiles"] = Json.Array(AdditionalFiles),
             ["resxGenerators"] = gens,
             ["usesResxSourceGenerator"] = UsesResxSourceGenerator,
         };
