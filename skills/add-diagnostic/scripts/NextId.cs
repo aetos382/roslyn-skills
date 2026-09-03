@@ -29,8 +29,10 @@ if (prefix is null && all.Count > 0)
     var letters = all.GroupBy(i => i.Letters).OrderByDescending(g => g.Count()).First().Key;
     prefix = suppression && letters.EndsWith('S') ? letters[..^1] : letters;
 }
-prefix ??= IdsFileText.ReadHeaderPrefix(text)
-    ?? throw new InvalidOperationException($"No existing IDs or band headers with a prefix in '{idsFile}'; pass --prefix.");
+prefix ??= IdsFileText.ReadHeaderPrefix(text);
+if (prefix is null)
+    return Json.Fail($"No existing IDs or band headers with a prefix in '{idsFile}'.",
+        "Pass --prefix <PREFIX>, and --band <n> for a diagnostic. This is the normal case for a repository with no diagnostics yet.");
 
 var mine = all.Where(i => suppression ? i.IsSuppressionOf(prefix) : i.IsDiagnosticOf(prefix)).ToList();
 var digits = cli.GetInt("digits") ?? (mine.Count > 0 ? mine.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key : 4);
@@ -56,7 +58,8 @@ if (band is int bi)
     var high = low + bandSize - 1;
     inBand = mine.Where(i => i.Number >= low && i.Number <= high).OrderBy(i => i.Number).ToList();
     next = inBand.Count > 0 ? inBand[^1].Number + 1 : low + 1;
-    if (next > high) throw new InvalidOperationException($"Band {bi} ({prefix}{(suppression ? "S" : "")}{low}-{high}) is full.");
+    if (next > high)
+        return Json.Fail($"Band {bi} ({prefix}{(suppression ? "S" : "")}{low}-{high}) is full.", "Choose another band for this category.");
 }
 else
 {
@@ -65,7 +68,7 @@ else
 
 var infix = suppression ? "S" : "";
 var value = $"{prefix}{infix}{next.ToString().PadLeft(digits, '0')}";
-if (mine.Any(i => i.Number == next)) throw new InvalidOperationException($"Computed ID {value} already exists.");
+if (mine.Any(i => i.Number == next)) return Json.Fail($"Computed ID {value} already exists.", "Re-run after checking the IDs file.");
 
 var knownBands = new JsonObject();
 foreach (var (k, v) in bands) knownBands[k] = v;
@@ -82,3 +85,4 @@ Json.Print(new JsonObject
     ["highestOverall"] = mine.Count > 0 ? mine.Max(i => i.Number) : 0,
     ["unresolvedCategory"] = category is not null && band is null && !suppression,
 });
+return 0;

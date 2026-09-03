@@ -18,10 +18,16 @@
    has one group (`Resources.resx` plus optional `Resources.ja.resx`, `Resources.de.resx`, ...). When a
    project has several groups, ask which one holds diagnostic strings, or pick the one that already
    contains `*Title` / `*Message` entries.
-2. Add the **same English text to every culture file of the group** (the base file and each
-   `Resources.<culture>.resx`). Translation is a separate task; a missing entry in a satellite file falls
-   back to the neutral resource, but keeping the files structurally identical avoids surprises with
-   tooling that diffs them.
+2. Add an entry to **every culture file of the group**, translated per file. The neutral file
+   (`Resources.resx`) holds the source language, normally English. Each `Resources.<culture>.resx` holds
+   the same message in that culture's language, which the file name names: `.ja` Japanese, `.de` German,
+   `.fr` French, `.zh-Hans` Simplified Chinese. Keep the placeholders (`{0}`, `{1}`) and the quoting
+   style identical across languages; translate the prose around them.
+
+   Never write the source text into a satellite file. A missing entry falls back to the neutral resource
+   and is visibly untranslated, but source text sitting in `Resources.ja.resx` looks finished and stays
+   wrong. When a translation cannot be produced with confidence, leave that file out and say so in the
+   report instead.
 3. Edit only the `.resx` files. Never edit `*.Designer.cs`.
 
 ## Ordering inside the file
@@ -34,15 +40,19 @@ can do that (pass the suppression IDs file when adding a Justification).
 
 ## Adding entries
 
-Write the entries to a JSON file (or pass the JSON inline) and run the script once per resource group,
-listing all culture files:
+Because each culture file gets different text, run the script once per file with that file's own entries
+JSON:
 
 ```bash
-dotnet "${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts/AddResxEntries.cs" -- \
-  --resx src/Contoso.Analyzers/Resources.resx --resx src/Contoso.Analyzers/Resources.ja.resx \
-  --ids-file src/Contoso.Analyzers/DiagnosticIds.cs \
-  --entries entries.json
+S="${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts"
+dotnet "$S/AddResxEntries.cs" -- --resx /repo/src/A/Resources.resx \
+  --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.en.json
+dotnet "$S/AddResxEntries.cs" -- --resx /repo/src/A/Resources.ja.resx \
+  --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.ja.json
 ```
+
+Passing several `--resx` files in one call is still supported, and correct only when the text is
+identical in all of them, which for diagnostic strings it never is.
 
 Options: `--resx` (repeatable, or comma-separated), `--entries` (JSON array or path to a JSON file),
 `--ids-file`, `--force`, `--validate-only`.

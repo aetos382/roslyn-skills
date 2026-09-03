@@ -96,7 +96,7 @@ wants to override. Every key is optional. See `examples/roslyn-skills.md`.
 | `resxBaseName` | Base name of the resource group holding diagnostic strings (`Resources`). |
 | `docsDir` / `docsIndexFile` | Documentation location. |
 | `docUrlTemplate` | URL template with `{owner}`, `{repo}`, `{branch}`, `{path}`. |
-| `idSharing` | `ProjectReference`, `CompileInclude`, or `SharedProject` (see `id-conventions.md`). Usually left out; detection reports it. |
+| `idSharing` | `AnalyzerProject`, `LinkedFile`, `SharedProject`, or `SharedFile` (see `id-conventions.md`). Usually left out; detection reports it. |
 
 The markdown body below the front matter holds free-form notes for the skill (for example the name of a
 descriptor helper method). Read it and follow it.

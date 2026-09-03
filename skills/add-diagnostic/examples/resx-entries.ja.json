@@ -1,0 +1,14 @@
+[
+  {
+    "name": "CancellationTokenShouldBeForwardedTitle",
+    "value": "キャンセル トークンを引き渡す必要があります"
+  },
+  {
+    "name": "CancellationTokenShouldBeForwardedMessage",
+    "value": "キャンセル トークン '{0}' を '{1}' の呼び出しに引き渡してください"
+  },
+  {
+    "name": "CancellationTokenShouldBeForwardedDescription",
+    "value": "CancellationToken を受け取るメソッドは、キャンセルが伝播するように、内部で行う非同期呼び出しにそのトークンを引き渡す必要があります。"
+  }
+]

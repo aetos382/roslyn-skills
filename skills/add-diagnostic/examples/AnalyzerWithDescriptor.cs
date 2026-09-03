@@ -37,13 +37,13 @@ public sealed class DisposableFieldAnalyzer : DiagnosticAnalyzer
         description: Resources.Localizable.AbstractTypeShouldNotHavePublicConstructorDescription,
         customTags: WellKnownDiagnosticTags.CompilationEnd);
 
-    // Collection expression (C# 12+): avoids IDE0303 under EnforceCodeStyleInBuild. Use ImmutableArray.Create(...)
-    // only when LangVersion is below 12.
+    // ImmutableArray.Create is the portable form. A collection expression needs both LangVersion 12+ and a
+    // System.Collections.Immutable carrying CollectionBuilderAttribute, which a bare netstandard2.0 project
+    // may lack; switch to [ ... ] only when the project's own analyzers ask for it (IDE0303).
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-        [
+        ImmutableArray.Create(
             DisposableFieldShouldBeDisposed,
-            AbstractTypeShouldNotHavePublicConstructor,
-        ];
+            AbstractTypeShouldNotHavePublicConstructor);
 
     public override void Initialize(AnalysisContext context)
     {

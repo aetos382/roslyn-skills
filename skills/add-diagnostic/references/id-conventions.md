@@ -133,9 +133,16 @@ See `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/Dia
 
 Code fixes need the ID values for `FixableDiagnosticIds`, and the Roslyn SDK layout keeps analyzers and
 code fixes in separate assemblies (the code-fix assembly references `Microsoft.CodeAnalysis.Workspaces`,
-which the command-line compiler does not load). Two arrangements are in use:
+which the command-line compiler does not load). Four arrangements are in use. They are named after
+**where the IDs live** and how a consumer reaches them, not after the MSBuild item that wires them up,
+since three of the four can be built out of `<ProjectReference>` items:
 
-### A. ProjectReference with a public IDs class (default)
+|  | IDs in the analyzer project | IDs outside it |
+|--|-----------------------------|----------------|
+| **reached by a project reference** | `AnalyzerProject` | `SharedProject` |
+| **reached by a linked `<Compile>`** | `LinkedFile` | `SharedFile` |
+
+### AnalyzerProject: the analyzer project owns the IDs (default)
 
 The code-fix project references the analyzer project and `DiagnosticIds` is `public`.
 
@@ -153,9 +160,10 @@ Roslynator (`Analyzers.CodeFixes` → `Analyzers`), and the Roslyn SDK "Analyzer
 Trade-off: the IDs class becomes public API of the analyzer assembly. That is harmless in practice because
 both assemblies ship in the same package.
 
-### B. Linked source file with an internal IDs class
+### LinkedFile: the code fix compiles the IDs file
 
-The code-fix project compiles the IDs file directly and no ProjectReference exists.
+The IDs still live in the analyzer project, but the code-fix project compiles that file directly and no
+reference between the projects exists, so the class can stay `internal`.
 
 ```xml
 <!-- Contoso.Analyzers.CodeFixes.csproj -->
@@ -167,7 +175,7 @@ The code-fix project compiles the IDs file directly and no ProjectReference exis
 Used by Meziantou.Analyzer (`internal static class RuleIdentifiers` linked from the CodeFixers project's
 `Directory.Build.props`). The class can stay `internal`, but every shared file has to be linked by hand.
 
-### C. Shared project referenced by both sides
+### SharedProject: a third project owns the IDs
 
 The IDs file (and often the categories file) lives in a small class library with no Roslyn dependency,
 and the analyzer, generator, and code-fix projects all reference it:
@@ -182,17 +190,45 @@ The IDs class is `public`. Files in the shared project must not use `<see cref="
 (CS1574), which is why `examples/DiagnosticCategories.cs` uses plain-text doc comments. The shared
 assembly ships in the package next to the analyzer assemblies.
 
+### SharedFile: no project owns the IDs
+
+The IDs file sits in a directory that is not a project at all, and every project that needs it links the
+file, so the constants are compiled into each assembly separately:
+
+```
+src/Shared/DiagnosticIds.cs                   <- belongs to no project
+src/Contoso.Analyzers/*.csproj                -> <Compile Include="..\Shared\DiagnosticIds.cs" Link="DiagnosticIds.cs" />
+src/Contoso.Analyzers.CodeFixes/*.csproj      -> the same item
+```
+
+The class can stay `internal`, since each assembly has its own copy. No extra assembly ships, and there
+is no reference between analyzer and code fix, but the `<Compile>` item has to be repeated in every
+project (a `Directory.Build.props` next to the shared folder can carry it once). The IDs are not part of
+any public API, so consumers cannot reference them; that only matters if the package is meant to expose
+its ID constants.
+
 ### What to do
 
-1. Detect: `FindConventions.cs` reports `idSharing` as `ProjectReference`, `CompileInclude`,
-   `SharedProject`, or `none`, and `diagnosticIdsProject` names the project that owns the IDs file.
-   Follow the detected arrangement; keep the IDs class visibility consistent with it (`public` for A
-   and C, `internal` acceptable for B).
-2. If `none` and a code-fix project exists, ask which arrangement to use and recommend A. Then add the
-   ProjectReference (A) or the `Compile Include` (B) to the code-fix project.
+1. Detect: `FindConventions.cs` reports `idSharing` and `diagnosticIdsProject`, the project that owns
+   the IDs file. A repository whose analyzer and code fix both reference a neutral project is
+   `SharedProject`, even though every wire in it is a `<ProjectReference>`:
+
+   | Value | The IDs file belongs to | The code-fix project | IDs class visibility |
+   |-------|-------------------------|----------------------|----------------------|
+   | `AnalyzerProject` | the analyzer project | references the analyzer project | `public` |
+   | `LinkedFile` | the analyzer project | compiles that file through a linked `<Compile>` item | `internal` is fine |
+   | `SharedProject` | a third project (an ordinary class library; no `.shproj` required) | references that third project, as the analyzer does | `public` |
+   | `SharedFile` | no project; each side links the file | compiles that file through a linked `<Compile>` item | `internal` is fine |
+   | `none` | nowhere the code-fix project can see | needs one of the above | — |
+
+   Follow the detected arrangement and keep the visibility consistent with it.
+2. If `none` and a code-fix project exists, ask which arrangement to use and recommend `AnalyzerProject`.
+   Then add the `<ProjectReference>` or the linked `<Compile>` item to the code-fix project. When the IDs
+   file already sits outside every project, `SharedFile` is the arrangement it is asking for: add the
+   linked `<Compile>` item rather than moving the file.
 3. If no code-fix project exists, do nothing beyond creating the IDs file; visibility follows the config
    (`idSharing`) or defaults to `public`.
 
 Source generators that report diagnostics live in the generator assembly and define their own descriptors
 there; they reference `DiagnosticIds` from the same assembly when the generator and analyzers share a
-project, or through arrangement A/B when they do not.
+project, or through one of the arrangements above when they do not.

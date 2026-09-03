@@ -483,26 +483,41 @@ if (diagIds is not null)
         .Where(p => idsDir.StartsWith(p.FullDirectory.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
         .OrderByDescending(p => p.FullDirectory.Length).FirstOrDefault();
 }
+// The values name *where the IDs live* and how a consumer reaches them, deliberately avoiding MSBuild
+// item names since three of the four can be built out of <ProjectReference> items:
+//
+//                      | IDs in the analyzer project | IDs outside it
+//   -------------------+-----------------------------+---------------------------------
+//   reached by a       | AnalyzerProject             | SharedProject (a third project
+//   project reference  |                             | both sides reference)
+//   reached by a       | LinkedFile                  | SharedFile (a file owned by no
+//   linked <Compile>   |                             | project, compiled by each side)
 if (sharing == "none")
 {
     var codeFixes = projects.Where(p => p.Kind == "codefix").ToList();
     var producers = projects.Where(p => p.Kind is "analyzer" or "generator").ToList();
     var analyzerPaths = producers.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
     var idsFileName = diagIds is not null ? Path.GetFileName(diagIds["path"]!.ToString()) : null;
+    bool LinksIdsFile(ProjectInfo p) =>
+        idsFileName is not null && p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
 
-    // C. The IDs file lives in a separate shared project that analyzers and code fixes both reference.
+    // The IDs file lives in a separate project that analyzers and code fixes both reference.
     if (idsProject is not null && idsProject.Kind is not ("analyzer" or "generator") && codeFixes.Count > 0
         && codeFixes.All(cf => cf.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase))
         && producers.Any(p => p.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase)))
         sharing = "SharedProject";
 
+    // The IDs file sits under no project at all and each side links it.
+    if (sharing == "none" && idsProject is null && projects.Any(LinksIdsFile))
+        sharing = "SharedFile";
+
     foreach (var cf in codeFixes)
     {
         if (sharing != "none") break;
-        // A. Code fix references the analyzer project that owns the IDs file.
-        if (cf.ProjectReferences.Any(analyzerPaths.Contains)) { sharing = "ProjectReference"; break; }
-        // B. Code fix compiles the IDs file through a linked Compile item.
-        if (idsFileName is not null && cf.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase))) { sharing = "CompileInclude"; break; }
+        // The code fix references the analyzer project that owns the IDs file.
+        if (cf.ProjectReferences.Any(analyzerPaths.Contains)) { sharing = "AnalyzerProject"; break; }
+        // The code fix compiles the analyzer project's IDs file through a linked Compile item.
+        if (LinksIdsFile(cf)) { sharing = "LinkedFile"; break; }
     }
 }
 
@@ -514,6 +529,12 @@ if (sharing == "none")
 var reported = cli.Has("summary")
     ? projects.Where(p => p.Kind is "analyzer" or "generator" or "codefix" or "roslyn-component").ToList()
     : projects;
+var reportedNames = reported.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+if (cli.Has("summary"))
+{
+    foreach (var g in resxGroups.OfType<JsonObject>().ToList())
+        if (g["project"] is null || !reportedNames.Contains(g["project"]!.ToString())) resxGroups.Remove(g);
+}
 var projectsJson = Json.Array(reported.Select(p => (JsonNode?)p.ToJson()));
 if (cli.Has("summary"))
 {

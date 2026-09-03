@@ -17,7 +17,7 @@ public sealed class TestClassSuppressor : DiagnosticSuppressor
         justification: Resources.Localizable.TestClassesMayBePublicJustification);
 
     public override ImmutableArray<SuppressionDescriptor> SupportedSuppressions { get; } =
-        [TestClassesMayBePublic];
+        ImmutableArray.Create(TestClassesMayBePublic);
 
     public override void ReportSuppressions(SuppressionAnalysisContext context)
     {

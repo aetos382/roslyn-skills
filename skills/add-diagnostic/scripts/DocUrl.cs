@@ -17,14 +17,18 @@ var root = Repo.GetRoot(cli.Get("path") ?? ".");
 var config = new Config(root);
 var git = GitInfo.Read(root);
 
-var template = cli.Get("template") ?? config.Get("docUrlTemplate") ?? git.DefaultTemplate
-    ?? throw new InvalidOperationException($"No docUrlTemplate configured and origin is not on github.com (host: '{git.Host}'). Add 'docUrlTemplate' to {Config.RelativePath} or pass --template.");
+var template = cli.Get("template") ?? config.Get("docUrlTemplate") ?? git.DefaultTemplate;
+if (template is null)
+    return Json.Fail($"No docUrlTemplate configured and origin is not on github.com (host: '{git.Host}').",
+        $"Add 'docUrlTemplate' to {Config.RelativePath} or pass --template.");
 
 var missing = new List<string>();
 if (template.Contains("{owner}") && git.Owner is null) missing.Add("owner");
 if (template.Contains("{repo}") && git.RepoName is null) missing.Add("repo");
 if (template.Contains("{branch}") && git.DefaultBranch is null) missing.Add("branch");
-if (missing.Count > 0) throw new InvalidOperationException("Could not determine: " + string.Join(", ", missing) + ". Check the git remote or pass --template without those placeholders.");
+if (missing.Count > 0)
+    return Json.Fail("Could not determine: " + string.Join(", ", missing) + ".",
+        "Check the git remote, or pass --template without those placeholders.");
 
 var url = template.Replace("{owner}", git.Owner ?? "").Replace("{repo}", git.RepoName ?? "").Replace("{branch}", git.DefaultBranch ?? "").Replace("{path}", doc);
 
@@ -37,3 +41,4 @@ Json.Print(new JsonObject
     ["branch"] = git.DefaultBranch,
     ["path"] = doc,
 });
+return 0;

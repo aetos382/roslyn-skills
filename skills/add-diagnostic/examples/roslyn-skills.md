@@ -16,8 +16,8 @@ docsDir: docs/rules
 docsIndexFile: README.md
 # Placeholders: {owner} {repo} {branch} {path}. Defaults to the GitHub blob URL when origin is on github.com.
 docUrlTemplate: https://github.com/{owner}/{repo}/blob/{branch}/{path}
-# ProjectReference | CompileInclude | SharedProject — how the code-fix project sees DiagnosticIds (normally detected).
-idSharing: ProjectReference
+# AnalyzerProject | LinkedFile | SharedProject | SharedFile — where DiagnosticIds lives (normally detected, so usually omitted).
+idSharing: AnalyzerProject
 ---
 
 # Notes

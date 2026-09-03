@@ -21,7 +21,9 @@ using System.Xml;
 
 var cli = new CliArgs(args, "force", "validate-only");
 var resxPaths = cli.GetAll("resx").SelectMany(v => v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).ToList();
-if (resxPaths.Count == 0) throw new ArgumentException("--resx is required.");
+if (resxPaths.Count == 0) return Json.Fail("--resx is required.", "Pass one --resx per file, or a comma-separated list.");
+if (resxPaths.FirstOrDefault(p => !File.Exists(p)) is { } missingResx)
+    return Json.Fail($"resx not found: {missingResx}", "Pass an absolute path; the working directory is not the repository.");
 var force = cli.Has("force");
 var validateOnly = cli.Has("validate-only");
 
@@ -41,15 +43,16 @@ SortKey KeyOf(string name)
 var entries = new List<Entry>();
 if (!validateOnly)
 {
-    var raw = cli.Require("entries");
+    if (cli.Get("entries") is not { } raw) return Json.Fail("--entries is required.", "Pass a JSON array or a path to a JSON file, or use --validate-only.");
     var json = File.Exists(raw) ? File.ReadAllText(raw) : raw;
-    var arr = JsonNode.Parse(json) as JsonArray ?? throw new ArgumentException("--entries must be a JSON array.");
+    if (JsonNode.Parse(json) is not JsonArray arr) return Json.Fail("--entries must be a JSON array.", "See examples/resx-entries.json.");
     foreach (var n in arr)
     {
-        var o = n as JsonObject ?? throw new ArgumentException("Each entry must be an object.");
+        if (n is not JsonObject o) return Json.Fail("Each entry must be an object.", "See examples/resx-entries.json.");
         var name = o["name"]?.ToString();
         var value = o["value"]?.ToString();
-        if (string.IsNullOrEmpty(name) || value is null) throw new ArgumentException($"Each entry needs 'name' and 'value': {o.ToJsonString()}");
+        if (string.IsNullOrEmpty(name) || value is null)
+            return Json.Fail($"Each entry needs 'name' and 'value': {o.ToJsonString()}", "See examples/resx-entries.json.");
         entries.Add(new Entry(name, value, o["comment"]?.ToString()));
     }
     entries = entries.OrderBy(e => KeyOf(e.Name), SortKey.Comparer).ToList();
@@ -59,13 +62,13 @@ var report = new JsonArray();
 var anyInvalid = false;
 foreach (var file in resxPaths)
 {
-    if (!File.Exists(file)) throw new FileNotFoundException($"resx not found: {file}");
     var full = Path.GetFullPath(file);
     var (content, hasBom, newline) = Text.ReadPreserving(full);
 
     var doc = new XmlDocument { PreserveWhitespace = true };
     doc.LoadXml(content);
-    if (doc.DocumentElement?.Name != "root") throw new InvalidDataException($"{file} is not a resx document (root element is '{doc.DocumentElement?.Name}').");
+    if (doc.DocumentElement?.Name != "root")
+        return Json.Fail($"{file} is not a resx document (root element is '{doc.DocumentElement?.Name}').", "Check the path.");
     var rootEl = doc.DocumentElement!;
 
     var added = new List<string>(); var skipped = new List<string>(); var updated = new List<string>();
