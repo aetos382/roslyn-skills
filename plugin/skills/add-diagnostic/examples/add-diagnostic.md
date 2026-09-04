@@ -1,9 +1,9 @@
 # add-diagnostic settings
 
-Repository conventions for the add-diagnostic skill. Commit this file at
-`.claude/roslyn-skills/add-diagnostic.md`. The first fenced `json` block holds the settings; every key is
-optional, and detection from the repository fills in whatever is missing. Comments and trailing commas are
-allowed.
+Repository conventions for the add-diagnostic skill.
+Commit this file at `.claude/roslyn-skills/add-diagnostic.md`.
+The first fenced `json` block holds the settings; every key is optional, and detection from the repository fills in whatever is missing.
+Comments and trailing commas are allowed.
 
 ```json
 {
@@ -30,5 +30,5 @@ allowed.
 
 ## Notes
 
-Free-form notes for the skill. For example: "Descriptors are created through the
-`DescriptorFactory.Create` helper in `Internal/DescriptorFactory.cs`; follow it."
+Free-form notes for the skill.
+For example: "Descriptors are created through the `DescriptorFactory.Create` helper in `Internal/DescriptorFactory.cs`; follow it."

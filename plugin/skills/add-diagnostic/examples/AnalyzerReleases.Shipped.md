@@ -1,8 +1,8 @@
 ; Shipped analyzer releases
 ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
 ;
-; This example shows the shape of the file after a release. A file created from scratch holds the two
-; comment lines above and nothing else: every rule listed here must have a descriptor, or RS2002 fires.
+; This example shows the shape of the file after a release.
+; A file created from scratch holds the two comment lines above and nothing else: every rule listed here must have a descriptor, or RS2002 fires.
 
 ## Release 1.0
 
