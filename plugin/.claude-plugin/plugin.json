@@ -1,6 +1,6 @@
 {
   "name": "roslyn-skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Skills for developing Roslyn analyzers, code fixes, source generators, and diagnostic suppressors.",
   "author": {
     "name": "aetos"

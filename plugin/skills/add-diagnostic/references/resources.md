@@ -68,7 +68,7 @@ Because each culture file gets different text, run the command once per file wit
 JSON:
 
 ```bash
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic"
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.1 -- add-diagnostic"
 $T add-resx-entries --resx /repo/src/A/Resources.resx \
   --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.en.json
 $T add-resx-entries --resx /repo/src/A/Resources.ja.resx \
