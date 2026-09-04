@@ -1,10 +1,14 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
+using System.Linq;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
 [TestClass]
 public sealed class CSharpSourceTests
 {
+    // lang=c#
     private const string Nested =
         """
         internal static partial class Resources
@@ -31,7 +35,7 @@ public sealed class CSharpSourceTests
         var classes = CSharpSource.Parse(Nested)
             .ContainingClasses(Nested.IndexOf("DisposableFieldTitle", StringComparison.Ordinal));
 
-        CollectionAssert.AreEqual(new[] { "Resources", "Localizable" }, classes);
+        Assert.AreSequenceEqual(["Resources", "Localizable"], classes);
     }
 
     /// <summary>Guarantees a sibling class the member does not live in is not reported as enclosing it.</summary>
@@ -40,14 +44,14 @@ public sealed class CSharpSourceTests
     {
         var classes = CSharpSource.Parse(Nested).ContainingClasses(Nested.IndexOf("\"x\"", StringComparison.Ordinal));
 
-        CollectionAssert.AreEqual(new[] { "Elsewhere" }, classes);
+        Assert.AreSequenceEqual(["Elsewhere"], classes);
     }
 
     /// <summary>Guarantees a position outside every class yields nothing rather than the nearest class.</summary>
     [TestMethod]
     public void APositionOutsideEveryClassYieldsNothing()
     {
-        Assert.AreEqual(0, CSharpSource.Parse(Nested).ContainingClasses(0).Count);
+        Assert.IsEmpty(CSharpSource.Parse(Nested).ContainingClasses(0));
     }
 
     /// <summary>
@@ -116,9 +120,9 @@ public sealed class CSharpSourceTests
             }
             """).ClassesWithBaseTypes().ToList();
 
-        var only = classes.Single();
-        Assert.AreEqual("Analyzer", only.Name);
-        CollectionAssert.AreEqual(new[] { "DiagnosticAnalyzer" }, only.BaseTypes);
+        var (name, baseTypes) = classes.Single();
+        Assert.AreEqual("Analyzer", name);
+        Assert.AreSequenceEqual(["DiagnosticAnalyzer"], baseTypes);
     }
 
     /// <summary>
@@ -145,12 +149,12 @@ public sealed class CSharpSourceTests
         Assert.IsNotNull(helper);
         Assert.AreEqual("Get", helper.Name);
         Assert.AreEqual("private", helper.Accessibility);
-        CollectionAssert.AreEqual(new[] { "Resources", "Localizable" }, helper.ContainingClasses);
+        Assert.AreSequenceEqual(["Resources", "Localizable"], helper.ContainingClasses);
 
         var member = source.LocalizableStringMembers().Single();
         Assert.AreEqual("DisposableFieldTitle", member.Name);
         Assert.AreEqual("public", member.Accessibility);
-        CollectionAssert.AreEqual(new[] { "Resources", "Localizable" }, member.ContainingClasses);
+        Assert.AreSequenceEqual(["Resources", "Localizable"], member.ContainingClasses);
     }
 
     /// <summary>

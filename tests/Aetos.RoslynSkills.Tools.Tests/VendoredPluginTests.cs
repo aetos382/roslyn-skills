@@ -1,4 +1,8 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
+using System.IO;
+using System.Linq;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
@@ -15,9 +19,9 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
     public void Dispose()
     {
         // Scanning a directory with no markers in it is the only way to clear the static exclusion list.
-        var empty = Directory.CreateDirectory(Path.Combine(_repo.Root, "no-plugins-here"));
+        var empty = Directory.CreateDirectory(Path.Combine(this._repo.Root, "no-plugins-here"));
         Repo.FindVendoredPlugins(empty.FullName);
-        _repo.Dispose();
+        this._repo.Dispose();
     }
 
     /// <summary>
@@ -27,13 +31,13 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void TheScanRootIsNotExcludedFromItself()
     {
-        _repo.Write(".claude-plugin/plugin.json", "{}");
-        _repo.Write("skills/add-diagnostic/SKILL.md", "# skill");
+        this._repo.Write(".claude-plugin/plugin.json", "{}");
+        this._repo.Write("skills/add-diagnostic/SKILL.md", "# skill");
 
-        var found = Repo.FindVendoredPlugins(_repo.Root);
+        var found = Repo.FindVendoredPlugins(this._repo.Root);
 
-        CollectionAssert.DoesNotContain(found.ToArray(), _repo.Root);
-        Assert.IsFalse(Repo.IsExcluded(Path.Combine(_repo.Root, "src", "Analyzers", "A.cs")));
+        Assert.DoesNotContain(this._repo.Root, found.ToArray());
+        Assert.IsFalse(Repo.IsExcluded(Path.Combine(this._repo.Root, "src", "Analyzers", "A.cs")));
     }
 
     /// <summary>
@@ -43,14 +47,14 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AVendoredPluginIsReportedOnceByItsOutermostDirectory()
     {
-        var plugin = Path.Combine(_repo.Root, "vendor", "roslyn-skills");
-        _repo.Write("vendor/roslyn-skills/.claude-plugin/plugin.json", "{}");
-        _repo.Write("vendor/roslyn-skills/skills/add-diagnostic/SKILL.md", "# skill");
-        _repo.Write("vendor/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
+        var plugin = Path.Combine(this._repo.Root, "vendor", "roslyn-skills");
+        this._repo.Write("vendor/roslyn-skills/.claude-plugin/plugin.json", "{}");
+        this._repo.Write("vendor/roslyn-skills/skills/add-diagnostic/SKILL.md", "# skill");
+        this._repo.Write("vendor/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
 
-        var found = Repo.FindVendoredPlugins(_repo.Root);
+        var found = Repo.FindVendoredPlugins(this._repo.Root);
 
-        CollectionAssert.AreEqual(new[] { plugin }, found.ToArray());
+        Assert.AreSequenceEqual([plugin], found.ToArray());
         Assert.IsTrue(Repo.IsExcluded(Path.Combine(plugin, "skills", "add-diagnostic", "examples", "DiagnosticIds.cs")));
     }
 
@@ -61,32 +65,32 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void ASkillDirectoryWithoutAManifestIsStillExcluded()
     {
-        var skill = Path.Combine(_repo.Root, "tools", "my-skill");
-        _repo.Write("tools/my-skill/SKILL.md", "# skill");
+        var skill = Path.Combine(this._repo.Root, "tools", "my-skill");
+        this._repo.Write("tools/my-skill/SKILL.md", "# skill");
 
-        var found = Repo.FindVendoredPlugins(_repo.Root);
+        var found = Repo.FindVendoredPlugins(this._repo.Root);
 
-        CollectionAssert.AreEqual(new[] { skill }, found.ToArray());
+        Assert.AreSequenceEqual([skill], found.ToArray());
     }
 
     /// <summary>Guarantees an installed-plugins directory is excluded, which is where Claude Code caches plugins.</summary>
     [TestMethod]
     public void AnInstalledPluginsDirectoryIsExcluded()
     {
-        var plugins = Path.Combine(_repo.Root, ".claude", "plugins");
-        _repo.Write(".claude/plugins/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
+        var plugins = Path.Combine(this._repo.Root, ".claude", "plugins");
+        this._repo.Write(".claude/plugins/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
 
-        var found = Repo.FindVendoredPlugins(_repo.Root);
+        var found = Repo.FindVendoredPlugins(this._repo.Root);
 
-        CollectionAssert.Contains(found.ToArray(), plugins);
+        Assert.Contains(plugins, found.ToArray());
     }
 
     /// <summary>Guarantees a repository with no plugin in it excludes nothing.</summary>
     [TestMethod]
     public void ARepositoryWithNoVendoredPluginExcludesNothing()
     {
-        _repo.Write("src/Analyzers/A.cs", "// source");
+        this._repo.Write("src/Analyzers/A.cs", "// source");
 
-        Assert.AreEqual(0, Repo.FindVendoredPlugins(_repo.Root).Count);
+        Assert.IsEmpty(Repo.FindVendoredPlugins(this._repo.Root));
     }
 }

@@ -1,6 +1,7 @@
+using System;
+using System.IO;
+using System.Linq;
 using System.Text.Json.Nodes;
-
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
@@ -14,12 +15,15 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
 {
     private readonly TempRepository _repo = new(testContext);
 
-    public void Dispose() => _repo.Dispose();
+    public void Dispose()
+    {
+        this._repo.Dispose();
+    }
 
     private static (int ExitCode, string Output) Run(params string[] args)
     {
         var original = Console.Out;
-        var buffer = new StringWriter();
+        using var buffer = new StringWriter();
         Console.SetOut(buffer);
         try
         {
@@ -40,10 +44,11 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
     {
         var groups = Program.CreateRootCommand().Subcommands;
 
-        CollectionAssert.AreEquivalent(new[] { "add-diagnostic" }, groups.Select(c => c.Name).ToArray());
-        CollectionAssert.AreEquivalent(
-            new[] { "find-conventions", "next-id", "add-resx-entries", "doc-url" },
-            groups.Single().Subcommands.Select(c => c.Name).ToArray());
+        Assert.AreSequenceEqual(["add-diagnostic"], groups.Select(c => c.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(
+            ["find-conventions", "next-id", "add-resx-entries", "doc-url"],
+            groups.Single().Subcommands.Select(c => c.Name).ToArray(),
+            SequenceOrder.InAnyOrder);
     }
 
     /// <summary>
@@ -57,7 +62,7 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
 
         Assert.AreEqual(1, exitCode);
         var json = JsonNode.Parse(output)!.AsObject();
-        StringAssert.Contains(json["error"]!.ToString(), "--ids-file");
+        Assert.Contains("--ids-file", json["error"]!.ToString());
         Assert.IsNotNull(json["hint"]);
     }
 
@@ -68,7 +73,7 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
         var (exitCode, output) = Run("add-diagnostic", "doc-url", "--doc", "docs/rules/ABC1001.md", "--bogus");
 
         Assert.AreEqual(1, exitCode);
-        StringAssert.Contains(JsonNode.Parse(output)!["error"]!.ToString(), "--bogus");
+        Assert.Contains("--bogus", JsonNode.Parse(output)!["error"]!.ToString());
     }
 
     /// <summary>
@@ -81,7 +86,7 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
         var (exitCode, output) = Run();
 
         Assert.AreEqual(0, exitCode);
-        StringAssert.Contains(output, "add-diagnostic");
+        Assert.Contains("add-diagnostic", output);
     }
 
     /// <summary>
@@ -94,7 +99,7 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
         var (exitCode, output) = Run("add-diagnostic");
 
         Assert.AreEqual(0, exitCode);
-        StringAssert.Contains(output, "find-conventions");
+        Assert.Contains("find-conventions", output);
     }
 
     /// <summary>
@@ -112,18 +117,22 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
               </resheader>
             </root>
             """;
-        var en = _repo.Write("Resources.resx", Empty);
-        var ja = _repo.Write("Resources.ja.resx", Empty);
-        var de = _repo.Write("Resources.de.resx", Empty);
+        var en = this._repo.Write("Resources.resx", Empty);
+        var ja = this._repo.Write("Resources.ja.resx", Empty);
+        var de = this._repo.Write("Resources.de.resx", Empty);
 
         var (exitCode, output) = Run(
             "add-diagnostic", "add-resx-entries", "--resx", $"{en},{ja}", "--resx", de,
-            "--entries", """[{ "name": "ABC1001Title", "value": "Title" }]""");
+            "--entries",
+            /*lang=json,strict*/ """[{ "name": "ABC1001Title", "value": "Title" }]""");
 
         Assert.AreEqual(0, exitCode);
         var report = JsonNode.Parse(output)!.AsArray();
-        CollectionAssert.AreEqual(new[] { en, ja, de }, report.Select(r => r!["file"]!.ToString()).ToArray());
-        foreach (var file in new[] { en, ja, de }) StringAssert.Contains(File.ReadAllText(file), "ABC1001Title");
+        Assert.AreSequenceEqual([en, ja, de], report.Select(r => r!["file"]!.ToString()).ToArray());
+        foreach (var file in new[] { en, ja, de })
+        {
+            Assert.Contains("ABC1001Title", File.ReadAllText(file));
+        }
     }
 
     /// <summary>
@@ -133,11 +142,11 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AFailureInsideACommandIsReportedAsJson()
     {
-        var missing = Path.Combine(_repo.Root, "Nowhere.resx");
+        var missing = Path.Combine(this._repo.Root, "Nowhere.resx");
 
         var (exitCode, output) = Run("add-diagnostic", "add-resx-entries", "--resx", missing, "--validate-only");
 
         Assert.AreEqual(1, exitCode);
-        StringAssert.Contains(JsonNode.Parse(output)!["error"]!.ToString(), missing);
+        Assert.Contains(missing, JsonNode.Parse(output)!["error"]!.ToString());
     }
 }

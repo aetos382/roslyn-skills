@@ -1,6 +1,8 @@
 using System.CommandLine;
+using System.Linq;
 
 using Aetos.RoslynSkills.Tools.AddDiagnostic;
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools;
 
@@ -9,12 +11,18 @@ internal static class Program
     public static int Main(string[] args)
     {
         // No arguments at all is someone looking for the command list, not a mistake worth reporting.
-        if (args.Length == 0) args = ["--help"];
+        if (args.Length == 0)
+        {
+            args = ["--help"];
+        }
 
         var parse = CreateRootCommand().Parse(args);
         if (parse.Errors.Count > 0)
+        {
             return Json.Fail(string.Join(" ", parse.Errors.Select(e => e.Message)),
                 "Run the command with --help to see the options it accepts.");
+        }
+
         return parse.Invoke();
     }
 

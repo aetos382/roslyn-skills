@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
 using System.Text.Json.Nodes;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 
@@ -48,8 +53,11 @@ internal static class DocUrlCommand
             // is an error rather than a plausible-looking broken link.
             var rel = Path.GetRelativePath(root, Path.GetFullPath(rawDoc)).Replace('\\', '/');
             if (rel.StartsWith("../", StringComparison.Ordinal) || Path.IsPathFullyQualified(rel))
+            {
                 return Json.Fail($"--doc '{rawDoc}' is outside the repository at '{root}'.",
                     "Pass the documentation path relative to the repository root, such as docs/rules/ABC1001.md, or point --path at the right repository.");
+            }
+
             doc = rel;
         }
         else
@@ -59,21 +67,40 @@ internal static class DocUrlCommand
 
         var config = new Config(root);
         if (config.Error is { } configError)
+        {
             return Json.Fail(configError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
+        }
+
         var git = GitInfo.Read(root);
 
         template ??= config.Get("docUrlTemplate") ?? git.DefaultTemplate;
         if (template is null)
+        {
             return Json.Fail($"No docUrlTemplate configured and origin is not on github.com (host: '{git.Host}').",
                 $"Add 'docUrlTemplate' to {Config.RelativePath} or pass --template.");
+        }
 
         var missing = new List<string>();
-        if (template.Contains("{owner}") && git.Owner is null) missing.Add("owner");
-        if (template.Contains("{repo}") && git.RepoName is null) missing.Add("repo");
-        if (template.Contains("{branch}") && git.DefaultBranch is null) missing.Add("branch");
+        if (template.Contains("{owner}") && git.Owner is null)
+        {
+            missing.Add("owner");
+        }
+
+        if (template.Contains("{repo}") && git.RepoName is null)
+        {
+            missing.Add("repo");
+        }
+
+        if (template.Contains("{branch}") && git.DefaultBranch is null)
+        {
+            missing.Add("branch");
+        }
+
         if (missing.Count > 0)
+        {
             return Json.Fail("Could not determine: " + string.Join(", ", missing) + ".",
                 "Check the git remote, or pass --template without those placeholders.");
+        }
 
         var url = template.Replace("{owner}", git.Owner ?? "").Replace("{repo}", git.RepoName ?? "").Replace("{branch}", git.DefaultBranch ?? "").Replace("{path}", doc);
 

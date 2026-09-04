@@ -1,5 +1,8 @@
+using System;
+using System.IO;
 using System.Text;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
@@ -8,7 +11,10 @@ public sealed class TextTests(TestContext testContext) : IDisposable
 {
     private readonly TempRepository _repo = new(testContext);
 
-    public void Dispose() => _repo.Dispose();
+    public void Dispose()
+    {
+        this._repo.Dispose();
+    }
 
     /// <summary>
     /// Guarantees a byte order mark is reported separately and kept out of the content, so an edited resx is
@@ -17,7 +23,7 @@ public sealed class TextTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AByteOrderMarkIsReportedAndStrippedFromTheContent()
     {
-        var path = Path.Combine(_repo.Root, "Resources.resx");
+        var path = Path.Combine(this._repo.Root, "Resources.resx");
         File.WriteAllBytes(path, [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("<root />")]);
 
         var (content, hasBom, _) = Text.ReadPreserving(path);
@@ -30,7 +36,7 @@ public sealed class TextTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AFileWithoutAByteOrderMarkIsReportedAsSuch()
     {
-        var path = _repo.Write("Resources.resx", "<root />");
+        var path = this._repo.Write("Resources.resx", "<root />");
 
         var (content, hasBom, _) = Text.ReadPreserving(path);
 
@@ -45,8 +51,8 @@ public sealed class TextTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void TheLineEndingAlreadyInTheFileIsReported()
     {
-        var crlf = _repo.Write("Crlf.resx", "<root>\r\n</root>");
-        var lf = _repo.Write("Lf.resx", "<root>\n</root>");
+        var crlf = this._repo.Write("Crlf.resx", "<root>\r\n</root>");
+        var lf = this._repo.Write("Lf.resx", "<root>\n</root>");
 
         Assert.AreEqual("\r\n", Text.ReadPreserving(crlf).NewLine);
         Assert.AreEqual("\n", Text.ReadPreserving(lf).NewLine);

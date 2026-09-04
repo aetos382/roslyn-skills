@@ -1,12 +1,13 @@
-using Aetos.RoslynSkills.Tools.AddDiagnostic;
+using System.Linq;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
 [TestClass]
 public sealed class IdConstTests
 {
+    // lang=c#
     private const string IdsFile =
         """
         internal static class DiagnosticIds
@@ -28,7 +29,7 @@ public sealed class IdConstTests
     {
         var ids = IdConst.Parse(IdsFile);
 
-        Assert.AreEqual(2, ids.Count);
+        Assert.HasCount(2, ids);
         Assert.AreEqual("DisposableField", ids[0].Name);
         Assert.AreEqual("CTS1001", ids[0].Value);
         Assert.AreEqual("CTS", ids[0].Letters);
@@ -78,6 +79,6 @@ public sealed class IdConstTests
             }
             """);
 
-        Assert.AreEqual(0, ids.Count);
+        Assert.IsEmpty(ids);
     }
 }

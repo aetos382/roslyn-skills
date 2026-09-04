@@ -1,10 +1,13 @@
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Aetos.RoslynSkills.Tools;
+namespace Aetos.RoslynSkills.Tools.Internal;
 
 /// <summary>A `const string Name = "value";` declaration, with the line it is written on.</summary>
 internal sealed record ConstString(string Name, string Value, int Line);
@@ -24,42 +27,56 @@ internal sealed class CSharpSource
     /// build would compile is reported: a constant under `#if DEBUG` is inside disabled text, not a
     /// declaration.
     /// </summary>
-    private static readonly CSharpParseOptions ParseOptions =
-        new(LanguageVersion.Preview, DocumentationMode.None);
+    private static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Preview, DocumentationMode.None);
 
     /// <summary>
     /// Callers read a file once and pass that one string to several readers, so keying the parse on the
     /// string keeps a repository-wide scan to one syntax tree per file. Weak, because the tree is only
     /// worth keeping while the text it came from is still in use.
     /// </summary>
-    private static readonly ConditionalWeakTable<string, CSharpSource> Parsed = new();
+    private static readonly ConditionalWeakTable<string, CSharpSource> Parsed = [];
 
     private static readonly SyntaxKind[] AccessibilityKeywords =
         [SyntaxKind.PublicKeyword, SyntaxKind.InternalKeyword, SyntaxKind.ProtectedKeyword, SyntaxKind.PrivateKeyword];
 
-    private readonly SyntaxTree tree;
-    private readonly CompilationUnitSyntax root;
+    private readonly SyntaxTree _tree;
+    private readonly CompilationUnitSyntax _root;
 
     private CSharpSource(string text)
     {
-        tree = CSharpSyntaxTree.ParseText(text, ParseOptions);
-        root = (CompilationUnitSyntax)tree.GetRoot();
+        this._tree = CSharpSyntaxTree.ParseText(text, ParseOptions);
+        this._root = (CompilationUnitSyntax)this._tree.GetRoot();
     }
 
-    public static CSharpSource Parse(string text) => Parsed.GetValue(text, static t => new CSharpSource(t));
+    public static CSharpSource Parse([StringSyntax("c#")] string text)
+    {
+        return Parsed.GetValue(text, static t => new CSharpSource(t));
+    }
 
     /// <summary>Every `const string`, in document order, whatever its accessibility.</summary>
     public IEnumerable<ConstString> ConstStrings()
     {
-        foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+        foreach (var field in this._root.DescendantNodes().OfType<FieldDeclarationSyntax>())
         {
-            if (!field.Modifiers.Any(SyntaxKind.ConstKeyword)) continue;
-            if (!IsString(field.Declaration.Type)) continue;
+            if (!field.Modifiers.Any(SyntaxKind.ConstKeyword))
+            {
+                continue;
+            }
+
+            if (!IsString(field.Declaration.Type))
+            {
+                continue;
+            }
+
             foreach (var variable in field.Declaration.Variables)
             {
                 // Only a literal: an interpolated or computed value is not an ID a caller could read.
-                if (variable.Initializer?.Value is not LiteralExpressionSyntax { Token.Value: string value }) continue;
-                yield return new ConstString(variable.Identifier.ValueText, value, LineOf(variable));
+                if (variable.Initializer?.Value is not LiteralExpressionSyntax { Token.Value: string value })
+                {
+                    continue;
+                }
+
+                yield return new ConstString(variable.Identifier.ValueText, value, this.LineOf(variable));
             }
         }
     }
@@ -70,20 +87,29 @@ internal sealed class CSharpSource
     /// </summary>
     public (string? Name, string Visibility) StaticClass()
     {
-        var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+        var declaration = this._root.DescendantNodes().OfType<ClassDeclarationSyntax>()
             .FirstOrDefault(c => c.Modifiers.Any(SyntaxKind.StaticKeyword));
-        if (declaration is null) return (null, "internal");
+        if (declaration is null)
+        {
+            return (null, "internal");
+        }
+
         var visibility = DeclaredAccessibility(declaration.Modifiers);
         return (declaration.Identifier.ValueText, visibility is "public" or "internal" ? visibility : "internal");
     }
 
     /// <summary>The first class of any kind, which for a generated Designer file is the resource class.</summary>
-    public string? FirstClassName() =>
-        root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault()?.Identifier.ValueText;
+    public string? FirstClassName()
+    {
+        return this._root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault()?.Identifier.ValueText;
+    }
 
     /// <summary>The `//` comments, in document order.</summary>
-    public IEnumerable<string> SingleLineComments() =>
-        root.DescendantTrivia().Where(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia)).Select(t => t.ToString());
+    public IEnumerable<string> SingleLineComments()
+    {
+        return this._root.DescendantTrivia().Where(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia))
+            .Select(t => t.ToString());
+    }
 
     /// <summary>
     /// Each class that declares base types, with those types as their simple names. Only a real base list
@@ -91,9 +117,13 @@ internal sealed class CSharpSource
     /// </summary>
     public IEnumerable<(string Name, List<string> BaseTypes)> ClassesWithBaseTypes()
     {
-        foreach (var declaration in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
+        foreach (var declaration in this._root.DescendantNodes().OfType<ClassDeclarationSyntax>())
         {
-            if (declaration.BaseList is null) continue;
+            if (declaration.BaseList is null)
+            {
+                continue;
+            }
+
             yield return (declaration.Identifier.ValueText,
                 declaration.BaseList.Types.Select(t => SimpleName(t.Type)).OfType<string>().ToList());
         }
@@ -105,15 +135,25 @@ internal sealed class CSharpSource
     /// </summary>
     public string? AssemblyAttributeArgument(string attributeName)
     {
-        foreach (var list in root.AttributeLists)
+        foreach (var list in this._root.AttributeLists)
         {
-            if (list.Target?.Identifier.IsKind(SyntaxKind.AssemblyKeyword) != true) continue;
+            if (list.Target?.Identifier.IsKind(SyntaxKind.AssemblyKeyword) != true)
+            {
+                continue;
+            }
+
             foreach (var attribute in list.Attributes)
             {
                 var name = SimpleName(attribute.Name);
-                if (name != attributeName && name != attributeName + "Attribute") continue;
+                if (name != attributeName && name != attributeName + "Attribute")
+                {
+                    continue;
+                }
+
                 if (attribute.ArgumentList?.Arguments is [{ Expression: LiteralExpressionSyntax { Token.Value: string value } }, ..])
+                {
                     return value;
+                }
             }
         }
         return null;
@@ -126,10 +166,18 @@ internal sealed class CSharpSource
     /// </summary>
     public LocalizableStringMember? LocalizableStringHelper()
     {
-        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        foreach (var method in this._root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            if (!method.Modifiers.Any(SyntaxKind.StaticKeyword) || !IsLocalizableString(method.ReturnType)) continue;
-            if (method.ParameterList.Parameters is not [{ Type: { } parameter }] || !IsString(parameter)) continue;
+            if (!method.Modifiers.Any(SyntaxKind.StaticKeyword) || !IsLocalizableString(method.ReturnType))
+            {
+                continue;
+            }
+
+            if (method.ParameterList.Parameters is not [{ Type: { } parameter }] || !IsString(parameter))
+            {
+                continue;
+            }
+
             return new LocalizableStringMember(
                 method.Identifier.ValueText, DeclaredAccessibility(method.Modifiers) ?? "private", ContainingClasses(method));
         }
@@ -144,33 +192,53 @@ internal sealed class CSharpSource
     public List<LocalizableStringMember> LocalizableStringMembers()
     {
         var members = new List<LocalizableStringMember>();
-        foreach (var member in root.DescendantNodes().OfType<MemberDeclarationSyntax>())
+        foreach (var member in this._root.DescendantNodes().OfType<MemberDeclarationSyntax>())
         {
             switch (member)
             {
                 case PropertyDeclarationSyntax property when Qualifies(property.Modifiers, property.Type):
                     Add(property.Identifier, property.Modifiers, property);
                     break;
+
                 case FieldDeclarationSyntax field when Qualifies(field.Modifiers, field.Declaration.Type):
-                    foreach (var variable in field.Declaration.Variables) Add(variable.Identifier, field.Modifiers, field);
+                    foreach (var variable in field.Declaration.Variables)
+                    {
+                        Add(variable.Identifier, field.Modifiers, field);
+                    }
+
                     break;
             }
         }
+
         return members;
 
-        static bool Qualifies(SyntaxTokenList modifiers, TypeSyntax type) =>
-            modifiers.Any(SyntaxKind.StaticKeyword) && IsLocalizableString(type)
-            && DeclaredAccessibility(modifiers) is "public" or "internal";
+        static bool Qualifies(SyntaxTokenList modifiers, TypeSyntax type)
+        {
+            return
+                modifiers.Any(SyntaxKind.StaticKeyword) &&
+                IsLocalizableString(type) &&
+                DeclaredAccessibility(modifiers) is "public" or "internal";
+        }
 
-        void Add(SyntaxToken identifier, SyntaxTokenList modifiers, SyntaxNode declaration) =>
+        void Add(SyntaxToken identifier, SyntaxTokenList modifiers, SyntaxNode declaration)
+        {
             members.Add(new LocalizableStringMember(
-                identifier.ValueText, DeclaredAccessibility(modifiers)!, ContainingClasses(declaration)));
+                identifier.ValueText,
+                DeclaredAccessibility(modifiers)!,
+                ContainingClasses(declaration)));
+        }
     }
 
     /// <summary>The classes a declaration is nested in, outermost first (e.g. ["Resources", "Localizable"]).</summary>
-    public List<string> ContainingClasses(SyntaxNode declaration) =>
-        declaration.Ancestors().OfType<TypeDeclarationSyntax>()
-            .Select(t => t.Identifier.ValueText).Reverse().ToList();
+    private static List<string> ContainingClasses(SyntaxNode declaration)
+    {
+        return declaration
+            .Ancestors()
+            .OfType<TypeDeclarationSyntax>()
+            .Select(t => t.Identifier.ValueText)
+            .Reverse()
+            .ToList();
+    }
 
     /// <summary>
     /// The classes whose bodies contain <paramref name="position"/>, outermost first. A position in a
@@ -178,37 +246,64 @@ internal sealed class CSharpSource
     /// </summary>
     public List<string> ContainingClasses(int position)
     {
-        if (root.FindToken(position).Parent is not { } node) return [];
-        return node.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
-            .Where(t => !t.OpenBraceToken.IsMissing
-                && position > t.OpenBraceToken.SpanStart && position < t.CloseBraceToken.SpanStart)
-            .Select(t => t.Identifier.ValueText).Reverse().ToList();
+        if (this._root.FindToken(position).Parent is not { } node)
+        {
+            return [];
+        }
+
+        return node
+            .AncestorsAndSelf()
+            .OfType<TypeDeclarationSyntax>()
+            .Where(t =>
+                !t.OpenBraceToken.IsMissing &&
+                position > t.OpenBraceToken.SpanStart &&
+                position < t.CloseBraceToken.SpanStart)
+            .Select(t => t.Identifier.ValueText)
+            .Reverse()
+            .ToList();
     }
 
-    private int LineOf(SyntaxNode node) => tree.GetLineSpan(node.Span).StartLinePosition.Line + 1;
+    private int LineOf(SyntaxNode node)
+    {
+        return this._tree.GetLineSpan(node.Span).StartLinePosition.Line + 1;
+    }
 
-    private static bool IsString(TypeSyntax? type) => SimpleName(type) is "string" or "String";
+    private static bool IsString(TypeSyntax? type)
+    {
+        return SimpleName(type) is "string" or "String";
+    }
 
-    private static bool IsLocalizableString(TypeSyntax? type) =>
-        SimpleName(type) is "LocalizableString" or "LocalizableResourceString";
+    private static bool IsLocalizableString(TypeSyntax? type)
+    {
+        return SimpleName(type) is "LocalizableString" or "LocalizableResourceString";
+    }
 
     /// <summary>The name a type is written with, without its namespace or type arguments.</summary>
-    private static string? SimpleName(TypeSyntax? type) => type switch
+    private static string? SimpleName(TypeSyntax? type)
     {
-        PredefinedTypeSyntax predefined => predefined.Keyword.ValueText,
-        IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-        GenericNameSyntax generic => generic.Identifier.ValueText,
-        QualifiedNameSyntax qualified => SimpleName(qualified.Right),
-        AliasQualifiedNameSyntax alias => SimpleName(alias.Name),
-        NullableTypeSyntax nullable => SimpleName(nullable.ElementType),
-        _ => null,
-    };
+        return type switch
+        {
+            PredefinedTypeSyntax predefined => predefined.Keyword.ValueText,
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            GenericNameSyntax generic => generic.Identifier.ValueText,
+            QualifiedNameSyntax qualified => SimpleName(qualified.Right),
+            AliasQualifiedNameSyntax alias => SimpleName(alias.Name),
+            NullableTypeSyntax nullable => SimpleName(nullable.ElementType),
+            _ => null,
+        };
+    }
 
     /// <summary>The accessibility keyword as written, or null when the declaration omits it.</summary>
     private static string? DeclaredAccessibility(SyntaxTokenList modifiers)
     {
         foreach (var modifier in modifiers)
-            if (AccessibilityKeywords.Contains(modifier.Kind())) return modifier.ValueText;
+        {
+            if (AccessibilityKeywords.Contains(modifier.Kind()))
+            {
+                return modifier.ValueText;
+            }
+        }
+
         return null;
     }
 }

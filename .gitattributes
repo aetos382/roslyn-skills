@@ -1,3 +1,9 @@
-# LF in the repository and on checkout. The C# entry points carry a `#!/usr/bin/env dotnet` shebang,
-# which only works with LF line endings.
 * text=auto eol=lf
+
+.editorconfig text diff=ini
+.globalconfig text diff=ini
+*.md text diff=markdown
+*.cs text diff=csharp
+
+**/*.lock.json linguist-generated=true merge=ours
+**/*-lock.json linguist-generated=true merge=ours

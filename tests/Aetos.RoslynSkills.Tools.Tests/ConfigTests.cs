@@ -1,6 +1,6 @@
-using Aetos.RoslynSkills.Tools.AddDiagnostic;
+using System;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
@@ -9,7 +9,10 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
 {
     private readonly TempRepository _repo = new(testContext);
 
-    public void Dispose() => _repo.Dispose();
+    public void Dispose()
+    {
+        this._repo.Dispose();
+    }
 
     /// <summary>
     /// Guarantees that the settings are taken from the first fenced json block and that every line outside
@@ -18,7 +21,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void SettingsComeFromTheJsonBlockAndEverythingElseBecomesNotes()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             # Settings
 
@@ -34,9 +37,9 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
         Assert.IsTrue(config.Exists);
         Assert.IsNull(config.Error);
         Assert.AreEqual("CTS", config.Get("diagnosticPrefix"));
-        StringAssert.Contains(config.Body, "DescriptorFactory.Create");
-        StringAssert.Contains(config.Body, "Trailing note.");
-        Assert.IsFalse(config.Body.Contains("diagnosticPrefix"), "the settings block must not be repeated in the notes");
+        Assert.Contains("DescriptorFactory.Create", config.Body);
+        Assert.Contains("Trailing note.", config.Body);
+        Assert.DoesNotContain("diagnosticPrefix", config.Body, "the settings block must not be repeated in the notes");
     }
 
     /// <summary>
@@ -46,7 +49,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AFenceTaggedWithAnotherLanguageIsNotTheSettings()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```csharp
             var x = 1;
@@ -69,9 +72,10 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void IndentedTildeAndJsoncFencesAreAccepted()
     {
-        var config = _repo.WriteConfig(string.Join('\n', [
+        var config = this._repo.WriteConfig(string.Join('\n', [
             "notes",
             "   ~~~JSONC",
+            /*lang=json,strict*/
             """   { "diagnosticPrefix": "CTS" }""",
             "   ~~~~",
             "more notes",
@@ -88,7 +92,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void CommentsAndTrailingCommasAreAccepted()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             {
@@ -111,7 +115,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AnUnclosedFenceRunsToTheEndOfTheDocument()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             notes
             ```json
@@ -129,7 +133,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AFileWithNoJsonBlockIsNotesOnly()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             # Notes
 
@@ -139,7 +143,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
         Assert.IsTrue(config.Exists);
         Assert.IsNull(config.Error);
         Assert.IsNull(config.Get("diagnosticPrefix"));
-        StringAssert.Contains(config.Body, "Only prose here.");
+        Assert.Contains("Only prose here.", config.Body);
     }
 
     /// <summary>
@@ -150,7 +154,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void MalformedJsonIsReportedInsteadOfIgnored()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             { "diagnosticPrefix": "CTS" "idDigits": 4 }
@@ -158,8 +162,8 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
             """);
 
         Assert.IsNotNull(config.Error);
-        StringAssert.Contains(config.Error, Config.RelativePath);
-        StringAssert.Contains(config.Error, "BytePositionInLine");
+        Assert.Contains(Config.RelativePath, config.Error);
+        Assert.Contains("BytePositionInLine", config.Error);
         Assert.IsNull(config.Get("diagnosticPrefix"));
     }
 
@@ -167,7 +171,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void ABlockThatIsNotAnObjectIsReported()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             ["CTS"]
@@ -181,7 +185,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AnEmptyBlockLeavesNoSettingsAndNoError()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             ```
@@ -198,7 +202,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void KeyLookupIgnoresCase()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             { "DOCSDIR": "docs/rules" }
@@ -215,7 +219,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void NestedLookupReadsTheCategoriesMap()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             { "categories": { "Design": 1, "Usage": 2 } }
@@ -234,7 +238,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void NonStringValuesKeepTheirJsonSpelling()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             { "idDigits": 4, "enabled": true }
@@ -252,7 +256,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void AMissingFileIsNotAnError()
     {
-        var config = new Config(_repo.Root);
+        var config = new Config(this._repo.Root);
 
         Assert.IsFalse(config.Exists);
         Assert.IsNull(config.Error);
@@ -267,7 +271,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     [TestMethod]
     public void ToJsonIsAnIndependentCopy()
     {
-        var config = _repo.WriteConfig(
+        var config = this._repo.WriteConfig(
             """
             ```json
             { "diagnosticPrefix": "CTS" }

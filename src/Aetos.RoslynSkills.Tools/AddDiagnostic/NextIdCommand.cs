@@ -1,5 +1,11 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
+using System.Linq;
 using System.Text.Json.Nodes;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 
@@ -63,7 +69,9 @@ internal static class NextIdCommand
 
         var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!));
         if (cfg.Error is { } cfgError)
+        {
             return Json.Fail(cfgError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
+        }
 
         // Prefix: explicit, else config, else inferred from existing IDs, else from band headers (`// Design (ABC1xxx)`).
         prefix ??= cfg.Get("diagnosticPrefix");
@@ -74,20 +82,32 @@ internal static class NextIdCommand
         }
         prefix ??= IdsFileText.ReadHeaderPrefix(text);
         if (prefix is null)
+        {
             return Json.Fail($"No existing IDs or band headers with a prefix in '{idsFile}'.",
                 "Pass --prefix <PREFIX>, and --band <n> for a diagnostic. This is the normal case for a repository with no diagnostics yet.");
+        }
 
         var mine = all.Where(i => suppression ? i.IsSuppressionOf(prefix) : i.IsDiagnosticOf(prefix)).ToList();
         var idDigits = digits ?? (mine.Count > 0 ? mine.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key : 4);
 
         var bands = IdsFileText.ReadBands(text);
-        if (band is null && category is not null && bands.TryGetValue(category, out var b)) band = b;
+        if (band is null && category is not null && bands.TryGetValue(category, out var b))
+        {
+            band = b;
+        }
+
         if (band is null && category is not null && !suppression)
         {
             // Fall back to the config's categories map.
-            if (cfg.Get("categories", category) is { } s && int.TryParse(s, out var cb)) band = cb;
+            if (cfg.Get("categories", category) is { } s && int.TryParse(s, out var cb))
+            {
+                band = cb;
+            }
         }
-        if (suppression) band = null;
+        if (suppression)
+        {
+            band = null;
+        }
 
         var bandSize = (int)Math.Pow(10, idDigits - 1);
         int next;
@@ -99,7 +119,9 @@ internal static class NextIdCommand
             inBand = mine.Where(i => i.Number >= low && i.Number <= high).OrderBy(i => i.Number).ToList();
             next = inBand.Count > 0 ? inBand[^1].Number + 1 : low + 1;
             if (next > high)
+            {
                 return Json.Fail($"Band {bi} ({prefix}{(suppression ? "S" : "")}{low}-{high}) is full.", "Choose another band for this category.");
+            }
         }
         else
         {
@@ -108,10 +130,17 @@ internal static class NextIdCommand
 
         var infix = suppression ? "S" : "";
         var value = $"{prefix}{infix}{next.ToString().PadLeft(idDigits, '0')}";
-        if (mine.Any(i => i.Number == next)) return Json.Fail($"Computed ID {value} already exists.", "Re-run after checking the IDs file.");
+        if (mine.Any(i => i.Number == next))
+        {
+            return Json.Fail($"Computed ID {value} already exists.", "Re-run after checking the IDs file.");
+        }
 
         var knownBands = new JsonObject();
-        foreach (var (k, v) in bands) knownBands[k] = v;
+        foreach (var (k, v) in bands)
+        {
+            knownBands[k] = v;
+        }
+
         Json.Print(new JsonObject
         {
             ["id"] = value,

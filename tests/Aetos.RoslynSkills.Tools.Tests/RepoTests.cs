@@ -1,4 +1,6 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.IO;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 

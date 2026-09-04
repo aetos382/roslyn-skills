@@ -1,4 +1,15 @@
+/artifacts/
 bin/
 obj/
 TestResults/
-artifacts/
+
+launchSettings.json
+
+*.user
+*.local.*
+*.log
+*.binlog
+
+.vs/
+
+[Tt]emp/

@@ -2,57 +2,22 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Aetos.RoslynSkills.Tools</RootNamespace>
-    <!--
-      Nothing here is culture-sensitive: every comparison and sort is ordinal, and the culture suffix of a
-      resx file is matched against a list rather than looked up (see ResxName). So the answers cannot depend
-      on the host's globalization data, and there is no reason to carry it.
-    -->
+    <TargetFramework>net10.0</TargetFramework>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <!--
-      Output is read by an agent, and mixing System.CommandLine's localized parse errors into the JSON
-      would only make them harder to match. Shipping no satellite assemblies keeps every message English.
-    -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-  </PropertyGroup>
-
-  <PropertyGroup Label="Package">
     <PackAsTool>true</PackAsTool>
-    <PackageId>Aetos.RoslynSkills.Tools</PackageId>
     <ToolCommandName>roslyn-skills</ToolCommandName>
-    <!--
-      Kept in step with the plugin manifest's version: SKILL.md pins this exact version, so the skills and
-      the tool they invoke are released together.
-    -->
-    <Version>0.1.0</Version>
-    <Authors>aetos</Authors>
     <Description>Helper commands for the roslyn-skills Claude Code plugin. One subcommand group per skill; add-diagnostic covers repository convention detection, diagnostic ID allocation, ordered resx insertion, and documentation URL resolution. Every command prints JSON.</Description>
     <PackageTags>roslyn;analyzer;diagnostics;dotnet-tool;claude-code</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/aetos382/roslyn-skills#readme</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/aetos382/roslyn-skills</RepositoryUrl>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.CommandLine" Version="2.0.11" />
-    <!--
-      Reading C# with the same parser the compiler uses. Only syntax is needed, so no Compilation and no
-      MetadataReference: the cost is the ~15 MB the two assemblies add to the package, kept to that by
-      SatelliteResourceLanguages above (Roslyn ships thirteen more languages).
-    -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <!--
-      Pinned only because the 5.9.0 packages above ask for a prerelease of it, which would otherwise be
-      what the lock file records. Roslyn's own advice for the releases already out:
-      https://github.com/dotnet/roslyn/issues/84099
-    -->
-    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="../../README.md" Pack="true" PackagePath="/" />
     <InternalsVisibleTo Include="Aetos.RoslynSkills.Tools.Tests" />
   </ItemGroup>
 

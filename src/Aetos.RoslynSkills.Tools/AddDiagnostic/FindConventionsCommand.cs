@@ -1,6 +1,12 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
+using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 
@@ -12,8 +18,21 @@ namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 /// .claude/roslyn-skills/add-diagnostic.md config, git remote information, and how IDs are shared with the
 /// code-fix project.
 /// </summary>
-internal static class FindConventionsCommand
+internal static partial class FindConventionsCommand
 {
+    [GeneratedRegex(@"Microsoft\.CodeAnalysis\.\w+\.Testing|^xunit|MSTest|NUnit|TUnit")]
+    private static partial Regex TestingPackage { get; }
+
+    [GeneratedRegex("Ids$|Identifiers$", RegexOptions.IgnoreCase)]
+    private static partial Regex IdsClassName { get; }
+
+    [GeneratedRegex(@"^(?<base>.+?)(?:Title|Message|Description|Justification)(?<suffix>\w*)$")]
+    private static partial Regex LocalizableMemberName { get; }
+
+    // Directories that a repository plausibly uses for documentation, whatever it calls them.
+    [GeneratedRegex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase)]
+    private static partial Regex DocDirName { get; }
+
     public static Command Create()
     {
         var path = new Option<string>("--path")
@@ -41,7 +60,9 @@ internal static class FindConventionsCommand
         var vendoredPlugins = Repo.FindVendoredPlugins(root);
         var config = new Config(root);
         if (config.Error is { } configError)
+        {
             return Json.Fail(configError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
+        }
 
         // ---------------------------------------------------------------------------
         // Projects
@@ -73,17 +94,33 @@ internal static class FindConventionsCommand
             var linked = new SortedSet<string>(StringComparer.Ordinal);
             var resxGenerators = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var i in ev.Items("PackageReference")) packageRefs.Add(i.Identity);
+            foreach (var i in ev.Items("PackageReference"))
+            {
+                packageRefs.Add(i.Identity);
+            }
+
             foreach (var i in ev.Items("ProjectReference"))
+            {
                 projectRefs.Add(i.FullPath is { } fp ? Repo.Rel(root, fp) : i.Identity);
+            }
+
             // A Compile item resolving outside the project directory is a linked file: the analyzer's IDs file
             // pulled into the code-fix project, or a shared file (directly, or through a .shproj's .projitems).
             foreach (var i in ev.Items("Compile"))
+            {
                 if (i.FullPath is { } fp && !fp.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
                     linked.Add(Repo.Rel(root, fp));
+                }
+            }
+
             foreach (var i in ev.Items("EmbeddedResource"))
+            {
                 if (i.Metadata.TryGetValue("Generator", out var gen) && !string.IsNullOrWhiteSpace(gen))
+                {
                     resxGenerators[Path.GetFileName((i.FullPath ?? i.Identity).Replace('\\', '/'))] = gen.Trim();
+                }
+            }
 
             // The neutral resx language, from the three places it can be declared: the NeutralLanguage property,
             // an AssemblyAttribute item carrying NeutralResourcesLanguageAttribute, and — since evaluation cannot
@@ -121,18 +158,33 @@ internal static class FindConventionsCommand
                 {
                     foreach (var (role, roleTypes) in roleBaseTypes)
                     {
-                        if (!bases.Any(roleTypes.Contains)) continue;
-                        if (!roles.Contains(role)) roles.Add(role);
-                        if (!classes.TryGetValue(role, out var list)) classes[role] = list = new();
+                        if (!bases.Any(roleTypes.Contains))
+                        {
+                            continue;
+                        }
+
+                        if (!roles.Contains(role))
+                        {
+                            roles.Add(role);
+                        }
+
+                        if (!classes.TryGetValue(role, out var list))
+                        {
+                            classes[role] = list = [];
+                        }
+
                         var entry = (className, Repo.Rel(root, cs));
-                        if (!list.Contains(entry)) list.Add(entry);
+                        if (!list.Contains(entry))
+                        {
+                            list.Add(entry);
+                        }
                     }
                 }
             }
 
             // Test projects: the property a test SDK sets, the MSTest SDK marker, or a testing package.
-            var isTest = ev.IsTrue("IsTestProject") || ev.IsTrue("UsingMSTestSdk")
-                || packageRefs.Any(p => Regex.IsMatch(p, @"Microsoft\.CodeAnalysis\.\w+\.Testing|^xunit|MSTest|NUnit|TUnit"));
+            var isTest = ev.IsTrue("IsTestProject") || ev.IsTrue("UsingMSTestSdk") || packageRefs.Any(TestingPackage.IsMatch);
+
             var kind = isTest ? "test"
                 : roles.Contains("codefix") || roles.Contains("refactoring") ? "codefix"
                 : roles.Contains("analyzer") || roles.Contains("suppressor") ? "analyzer"
@@ -140,10 +192,23 @@ internal static class FindConventionsCommand
                 : packageRefs.Any(p => p.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal)) ? "roslyn-component"
                 : "other";
 
-            projects.Add(new ProjectInfo(Path.GetFileNameWithoutExtension(csproj), Repo.Rel(root, csproj), Repo.Rel(root, dir), dir, kind, roles, classes,
-                packageRefs.ToList(), projectRefs.ToList(), linked.ToList(), resxGenerators,
-                packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"), neutralLanguage,
-                ev.Property("LangVersion"), ev.Property("TargetFrameworks") ?? ev.Property("TargetFramework"), ev.Error));
+            projects.Add(new ProjectInfo(
+                Path.GetFileNameWithoutExtension(csproj),
+                Repo.Rel(root, csproj),
+                Repo.Rel(root, dir),
+                dir,
+                kind,
+                roles,
+                classes,
+                packageRefs.ToList(),
+                projectRefs.ToList(),
+                linked.ToList(),
+                resxGenerators,
+                packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"),
+                neutralLanguage,
+                ev.Property("LangVersion"),
+                ev.Property("TargetFrameworks") ?? ev.Property("TargetFramework"),
+                ev.Error));
         }
 
         // ---------------------------------------------------------------------------
@@ -156,10 +221,17 @@ internal static class FindConventionsCommand
             var text = File.ReadAllText(cs);
             var ids = IdConst.Parse(text);
             var (cls, vis) = IdsFileText.ReadClass(text);
-            var looksLikeIdsFile = ids.Count > 0 || (cls is not null && Regex.IsMatch(cls, "Ids$|Identifiers$", RegexOptions.IgnoreCase));
-            if (looksLikeIdsFile) idFiles[cs] = (ids, cls, vis, text);
+            var looksLikeIdsFile = ids.Count > 0 || (cls is not null && IdsClassName.IsMatch(cls));
+            if (looksLikeIdsFile)
+            {
+                idFiles[cs] = (ids, cls, vis, text);
+            }
+
             // Categories class: DiagnosticCategories, Categories, RuleCategories, ...
-            if (cls is not null && cls.Contains("Categor", StringComparison.OrdinalIgnoreCase)) categoryFiles[cs] = (cls, vis, text);
+            if (cls is not null && cls.Contains("Categor", StringComparison.OrdinalIgnoreCase))
+            {
+                categoryFiles[cs] = (cls, vis, text);
+            }
         }
 
         // Diagnostic prefix: config wins; otherwise the most common letter group, ignoring groups that are
@@ -179,24 +251,36 @@ internal static class FindConventionsCommand
         {
             string? file = null;
             if (configuredPath is not null && File.Exists(Path.Combine(root, configuredPath)))
+            {
                 file = Path.GetFullPath(Path.Combine(root, configuredPath));
+            }
             else
             {
                 Func<IdConst, bool> matches = suppression
                     ? i => prefix is not null ? i.IsSuppressionOf(prefix) : i.Letters.EndsWith('S')
-                    : i => prefix is not null ? i.IsDiagnosticOf(prefix) : true;
+                    : i => prefix is null || i.IsDiagnosticOf(prefix);
+
                 Func<string?, bool> classMatches = suppression
                     ? c => c is not null && c.Contains("Suppress", StringComparison.OrdinalIgnoreCase)
                     : c => c is not null && !c.Contains("Suppress", StringComparison.OrdinalIgnoreCase);
+
                 file = idFiles
                     .Select(kv => (Path: kv.Key, Count: kv.Value.Ids.Count(matches), ClassOk: classMatches(kv.Value.ClassName)))
                     .Where(x => x.Count > 0 || x.ClassOk)
                     .OrderByDescending(x => x.Count).ThenByDescending(x => x.ClassOk).ThenBy(x => x.Path, StringComparer.Ordinal)
                     .Select(x => x.Path)
                     .FirstOrDefault();
-                if (file is not null && idFiles[file].Ids.Count == 0 && !classMatches(idFiles[file].ClassName)) file = null;
+
+                if (file is not null && idFiles[file].Ids.Count == 0 && !classMatches(idFiles[file].ClassName))
+                {
+                    file = null;
+                }
             }
-            if (file is null) return null;
+            if (file is null)
+            {
+                return null;
+            }
+
             if (!idFiles.TryGetValue(file, out var info))
             {
                 var text = File.ReadAllText(file);
@@ -221,7 +305,9 @@ internal static class FindConventionsCommand
         var diagIds = DescribeIdsFile(false, config.Get("diagnosticIdsFile"));
         var suppIds = DescribeIdsFile(true, config.Get("suppressionIdsFile"));
         if (diagIds is not null && suppIds is not null && diagIds["path"]!.ToString() == suppIds["path"]!.ToString())
+        {
             suppIds = null; // same file cannot be both; suppressions are expected in their own file
+        }
 
         // ---------------------------------------------------------------------------
         // Categories class (the constants passed as DiagnosticDescriptor.category)
@@ -230,7 +316,9 @@ internal static class FindConventionsCommand
         {
             string? file = null;
             if (config.Get("categoriesFile") is { } cfgCat && File.Exists(Path.Combine(root, cfgCat)))
+            {
                 file = Path.GetFullPath(Path.Combine(root, cfgCat));
+            }
             else if (categoryFiles.Count > 0)
             {
                 // Prefer the categories class that sits next to the IDs file; otherwise the one with most constants.
@@ -250,7 +338,11 @@ internal static class FindConventionsCommand
                     info = (cls ?? "", vis, text);
                 }
                 var values = new JsonObject();
-                foreach (var constant in CSharpSource.Parse(info.Text).ConstStrings()) values[constant.Name] = constant.Value;
+                foreach (var constant in CSharpSource.Parse(info.Text).ConstStrings())
+                {
+                    values[constant.Name] = constant.Value;
+                }
+
                 categoriesInfo = new JsonObject
                 {
                     ["path"] = Repo.Rel(root, file),
@@ -265,24 +357,41 @@ internal static class FindConventionsCommand
         // resx groups
         // ---------------------------------------------------------------------------
         var resxGroups = new JsonArray();
-        foreach (var g in Repo.Files(root, "*.resx").GroupBy(f => (Dir: Path.GetDirectoryName(f)!, Base: ResxName.Split(f).Base)).OrderBy(g => g.Key.Dir + g.Key.Base, StringComparer.Ordinal))
+        foreach (var g in Repo.Files(root, "*.resx")
+                     .GroupBy(f => (Dir: Path.GetDirectoryName(f)!, Base: ResxName.Split(f).Base))
+                     .OrderBy(g => g.Key.Dir + g.Key.Base, StringComparer.Ordinal))
         {
             var dir = g.Key.Dir;
             var baseFile = Path.Combine(dir, g.Key.Base + ".resx");
             var designer = Path.Combine(dir, g.Key.Base + ".Designer.cs");
             var owner = projects
                 .Where(p => dir.Replace('\\', '/').StartsWith(p.FullDirectory.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(p => p.FullDirectory.Length).FirstOrDefault();
+                .OrderByDescending(p => p.FullDirectory.Length)
+                .FirstOrDefault();
+
             string? generator = null;
             if (owner is not null)
             {
-                if (owner.UsesResxSourceGenerator) generator = "Microsoft.CodeAnalysis.ResxSourceGenerator";
-                else if (owner.ResxGenerators.TryGetValue(g.Key.Base + ".resx", out var gen)) generator = gen;
+                if (owner.UsesResxSourceGenerator)
+                {
+                    generator = "Microsoft.CodeAnalysis.ResxSourceGenerator";
+                }
+                else if (owner.ResxGenerators.TryGetValue(g.Key.Base + ".resx", out var gen))
+                {
+                    generator = gen;
+                }
             }
-            if (generator is null && File.Exists(designer)) generator = "ResXFileCodeGenerator (inferred from Designer.cs)";
+            if (generator is null && File.Exists(designer))
+            {
+                generator = "ResXFileCodeGenerator (inferred from Designer.cs)";
+            }
+
             var resourceClass = g.Key.Base;
             if (File.Exists(designer))
+            {
                 resourceClass = CSharpSource.Parse(File.ReadAllText(designer)).FirstClassName() ?? resourceClass;
+            }
+
             // A hand-written helper such as `static LocalizableResourceString GetLocalizableResourceString(string name)`
             // (usually in a partial of the resource class). Its accessibility matters: a private helper means the
             // intended entry points are LocalizableResourceString properties inside the same class.
@@ -292,7 +401,11 @@ internal static class FindConventionsCommand
             {
                 foreach (var cs in Repo.Files(owner.FullDirectory, "*.cs"))
                 {
-                    if (helper is not null && properties is not null) break;
+                    if (helper is not null && properties is not null)
+                    {
+                        break;
+                    }
+
                     var source = CSharpSource.Parse(File.ReadAllText(cs));
                     if (helper is null && source.LocalizableStringHelper() is { } h)
                     {
@@ -308,7 +421,7 @@ internal static class FindConventionsCommand
                     {
                         var first = members[0];
                         var nested = first.ContainingClasses.Count >= 2 ? first.ContainingClasses[^1] : null;
-                        var sm = Regex.Match(first.Name, @"^(?<base>.+?)(?:Title|Message|Description|Justification)(?<suffix>\w*)$");
+                        var sm = LocalizableMemberName.Match(first.Name);
                         var suffix = sm.Success ? sm.Groups["suffix"].Value : "";
                         properties = new JsonObject
                         {
@@ -353,6 +466,7 @@ internal static class FindConventionsCommand
             var shipped = Path.Combine(p.FullDirectory, "AnalyzerReleases.Shipped.md");
             var unshipped = Path.Combine(p.FullDirectory, "AnalyzerReleases.Unshipped.md");
             if (File.Exists(shipped) || File.Exists(unshipped) || p.Kind is "analyzer" or "generator")
+            {
                 releases.Add(new JsonObject
                 {
                     ["project"] = p.Name,
@@ -367,6 +481,7 @@ internal static class FindConventionsCommand
                         : p.PackageReferences.Any(r => r.StartsWith("Microsoft.CodeAnalysis.", StringComparison.Ordinal)) ? "viaCodeAnalysis"
                         : "none",
                 });
+            }
         }
 
         // ---------------------------------------------------------------------------
@@ -384,7 +499,10 @@ internal static class FindConventionsCommand
         var allMarkdown = Repo.Files(root, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
 
         string? docsDir = null;
-        if (config.Get("docsDir") is { } cfgDocs && Directory.Exists(Path.Combine(root, cfgDocs))) docsDir = Path.GetFullPath(Path.Combine(root, cfgDocs));
+        if (config.Get("docsDir") is { } cfgDocs && Directory.Exists(Path.Combine(root, cfgDocs)))
+        {
+            docsDir = Path.GetFullPath(Path.Combine(root, cfgDocs));
+        }
         else
         {
             docsDir = allMarkdown
@@ -394,10 +512,8 @@ internal static class FindConventionsCommand
                 .Select(g => g.Key).FirstOrDefault();
         }
 
-        // Directories that a repository plausibly uses for documentation, whatever it calls them.
-        var docDirNameRegex = new Regex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase);
         var candidateDirs = Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
-            .Where(d => !Repo.IsExcluded(d) && docDirNameRegex.IsMatch(Path.GetFileName(d)))
+            .Where(d => !Repo.IsExcluded(d) && DocDirName.IsMatch(Path.GetFileName(d)))
             .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
             .Select(d => Repo.Rel(root, d))
             .ToList();
@@ -413,16 +529,36 @@ internal static class FindConventionsCommand
             var mentionRegex = new Regex(@"(^|[\s|(\[#`])(" + string.Join('|', knownIds.Select(Regex.Escape)) + @")([\s|)\].,:`]|$)", RegexOptions.Multiline);
             foreach (var f in allMarkdown)
             {
-                if (docsDir is not null && Path.GetDirectoryName(f) == docsDir) continue;
+                if (docsDir is not null && Path.GetDirectoryName(f) == docsDir)
+                {
+                    continue;
+                }
+
                 // Release tracking lists every ID by design; it is not documentation.
-                if (Path.GetFileName(f).StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase)) continue;
+                if (Path.GetFileName(f).StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 try
                 {
-                    if (new FileInfo(f).Length > 512 * 1024) continue;
-                    if (mentionRegex.IsMatch(File.ReadAllText(f))) mentionFiles.Add(Repo.Rel(root, f));
+                    if (new FileInfo(f).Length > 512 * 1024)
+                    {
+                        continue;
+                    }
+
+                    if (mentionRegex.IsMatch(File.ReadAllText(f)))
+                    {
+                        mentionFiles.Add(Repo.Rel(root, f));
+                    }
                 }
-                catch { }
-                if (mentionFiles.Count >= 20) break;
+                catch
+                {
+                }
+                if (mentionFiles.Count >= 20)
+                {
+                    break;
+                }
             }
         }
 
@@ -431,7 +567,7 @@ internal static class FindConventionsCommand
         var suggested = docsDir is not null
             ? Repo.Rel(root, docsDir)
             : candidateDirs.Count > 0
-                ? (docDirNameRegex.IsMatch(Path.GetFileName(candidateDirs[0])) && Path.GetFileName(candidateDirs[0]).Equals("rules", StringComparison.OrdinalIgnoreCase)
+                ? (DocDirName.IsMatch(Path.GetFileName(candidateDirs[0])) && Path.GetFileName(candidateDirs[0]).Equals("rules", StringComparison.OrdinalIgnoreCase)
                     ? candidateDirs[0]
                     : candidateDirs[0] + "/rules")
                 : "docs/rules";
@@ -446,13 +582,19 @@ internal static class FindConventionsCommand
             ["mentionFiles"] = Json.Array(mentionFiles),
             ["suggestedDirectory"] = suggested,
         };
+
         if (docsDir is not null)
         {
             docs["directory"] = Repo.Rel(root, docsDir);
             foreach (var idx in new[] { config.Get("docsIndexFile"), "README.md", "index.md", "Index.md" })
             {
-                if (idx is not null && File.Exists(Path.Combine(docsDir, idx))) { docs["indexFile"] = Repo.Rel(root, Path.Combine(docsDir, idx)); break; }
+                if (idx is not null && File.Exists(Path.Combine(docsDir, idx)))
+                {
+                    docs["indexFile"] = Repo.Rel(root, Path.Combine(docsDir, idx));
+                    break;
+                }
             }
+
             var mds = Directory.EnumerateFiles(docsDir, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
             docs["ruleDocs"] = Json.Array(mds.Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f))).Select(f => Repo.Rel(root, f)));
             docs["suppressionDocs"] = Json.Array(mds.Where(f => suppDocRegex.IsMatch(Path.GetFileName(f))).Select(f => Repo.Rel(root, f)));
@@ -501,26 +643,46 @@ internal static class FindConventionsCommand
             var producers = projects.Where(p => p.Kind is "analyzer" or "generator").ToList();
             var analyzerPaths = producers.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var idsFileName = diagIds is not null ? Path.GetFileName(diagIds["path"]!.ToString()) : null;
-            bool LinksIdsFile(ProjectInfo p) =>
-                idsFileName is not null && p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
+            bool LinksIdsFile(ProjectInfo p)
+            {
+                return idsFileName is not null &&
+                       p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
+            }
 
             // The IDs file lives in a separate project that analyzers and code fixes both reference.
             if (idsProject is not null && idsProject.Kind is not ("analyzer" or "generator") && codeFixes.Count > 0
                 && codeFixes.All(cf => cf.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase))
                 && producers.Any(p => p.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase)))
+            {
                 sharing = "SharedProject";
+            }
 
             // The IDs file sits under no project at all and each side links it.
             if (sharing == "none" && idsProject is null && projects.Any(LinksIdsFile))
+            {
                 sharing = "SharedFile";
+            }
 
             foreach (var cf in codeFixes)
             {
-                if (sharing != "none") break;
+                if (sharing != "none")
+                {
+                    break;
+                }
+
                 // The code fix references the analyzer project that owns the IDs file.
-                if (cf.ProjectReferences.Any(analyzerPaths.Contains)) { sharing = "AnalyzerProject"; break; }
+                if (cf.ProjectReferences.Any(analyzerPaths.Contains))
+                {
+                    sharing = "AnalyzerProject";
+                    break;
+                }
+
                 // The code fix compiles the analyzer project's IDs file through a linked Compile item.
-                if (LinksIdsFile(cf)) { sharing = "LinkedFile"; break; }
+                if (LinksIdsFile(cf))
+                {
+                    sharing = "LinkedFile";
+                    break;
+                }
             }
         }
 
@@ -536,14 +698,23 @@ internal static class FindConventionsCommand
         if (summary)
         {
             foreach (var g in resxGroups.OfType<JsonObject>().ToList())
-                if (g["project"] is null || !reportedNames.Contains(g["project"]!.ToString())) resxGroups.Remove(g);
+            {
+                if (g["project"] is null || !reportedNames.Contains(g["project"]!.ToString()))
+                {
+                    resxGroups.Remove(g);
+                }
+            }
         }
         var projectsJson = Json.Array(reported.Select(p => (JsonNode?)p.ToJson()));
         if (summary)
         {
             foreach (var p in projectsJson.OfType<JsonObject>())
+            {
                 foreach (var key in new[] { "packageReferences", "projectReferences", "linkedCompileFiles", "resxGenerators" })
+                {
                     p.Remove(key);
+                }
+            }
         }
 
         Json.Print(new JsonObject
@@ -576,29 +747,36 @@ internal static class FindConventionsCommand
         public JsonObject ToJson()
         {
             var classes = new JsonObject();
-            foreach (var (role, list) in Classes)
+            foreach (var (role, list) in this.Classes)
+            {
                 classes[role] = Json.Array(list.Select(c => (JsonNode?)new JsonObject { ["class"] = c.Class, ["file"] = c.File }));
+            }
+
             var gens = new JsonObject();
-            foreach (var (k, v) in ResxGenerators) gens[k] = v;
+            foreach (var (k, v) in this.ResxGenerators)
+            {
+                gens[k] = v;
+            }
+
             return new JsonObject
             {
-                ["name"] = Name,
-                ["path"] = Path,
-                ["directory"] = Directory,
-                ["kind"] = Kind,
-                ["roles"] = Json.Array(Roles),
+                ["name"] = this.Name,
+                ["path"] = this.Path,
+                ["directory"] = this.Directory,
+                ["kind"] = this.Kind,
+                ["roles"] = Json.Array(this.Roles),
                 ["classes"] = classes,
-                ["packageReferences"] = Json.Array(PackageReferences),
-                ["projectReferences"] = Json.Array(ProjectReferences),
-                ["linkedCompileFiles"] = Json.Array(LinkedCompileFiles),
+                ["packageReferences"] = Json.Array(this.PackageReferences),
+                ["projectReferences"] = Json.Array(this.ProjectReferences),
+                ["linkedCompileFiles"] = Json.Array(this.LinkedCompileFiles),
                 ["resxGenerators"] = gens,
-                ["usesResxSourceGenerator"] = UsesResxSourceGenerator,
-                ["neutralLanguage"] = NeutralLanguage,
-                ["langVersion"] = LangVersion,
-                ["targetFrameworks"] = TargetFrameworks,
+                ["usesResxSourceGenerator"] = this.UsesResxSourceGenerator,
+                ["neutralLanguage"] = this.NeutralLanguage,
+                ["langVersion"] = this.LangVersion,
+                ["targetFrameworks"] = this.TargetFrameworks,
                 // Non-null when MSBuild could not evaluate the project: every field above is then a guess
                 // based on source files alone. Report it rather than treating the project as empty.
-                ["evaluationError"] = EvaluationError,
+                ["evaluationError"] = this.EvaluationError,
             };
         }
     }

@@ -1,6 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Aetos.RoslynSkills.Tools;
+namespace Aetos.RoslynSkills.Tools.Internal;
 
 internal static class Shell
 {
@@ -17,12 +19,32 @@ internal static class Shell
                 CreateNoWindow = true,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
             };
-            foreach (var a in args) psi.ArgumentList.Add(a);
+            foreach (var a in args)
+            {
+                psi.ArgumentList.Add(a);
+            }
+
             using var p = Process.Start(psi);
-            if (p is null) return (-1, "", "process did not start");
+            if (p is null)
+            {
+                return (-1, "", "process did not start");
+            }
+
             var stdout = p.StandardOutput.ReadToEndAsync();
             var stderr = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return (-1, "", $"timed out after {timeoutMs} ms"); }
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try
+                {
+                    p.Kill(true);
+                }
+                catch
+                {
+                }
+
+                return (-1, "", $"timed out after {timeoutMs} ms");
+            }
+
             return (p.ExitCode, stdout.Result, stderr.Result);
         }
         catch (Exception ex)
@@ -44,11 +66,28 @@ internal static class Shell
                 CreateNoWindow = true,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
             };
+
             using var p = Process.Start(psi);
-            if (p is null) return null;
+            if (p is null)
+            {
+                return null;
+            }
+
             var stdout = p.StandardOutput.ReadToEndAsync();
             var stderr = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return null; }
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try
+                {
+                    p.Kill(true);
+                }
+                catch
+                {
+                }
+
+                return null;
+            }
+
             return p.ExitCode == 0 ? stdout.Result.Trim() : null;
         }
         catch

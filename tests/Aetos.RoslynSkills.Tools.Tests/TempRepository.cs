@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+
 using Aetos.RoslynSkills.Tools.AddDiagnostic;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,15 +12,15 @@ internal sealed class TempRepository : IDisposable
 {
     public TempRepository(TestContext context)
     {
-        Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "roslyn-skills-tests", $"{context.TestName}-{Guid.NewGuid():N}"));
-        Directory.CreateDirectory(Root);
+        this.Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "roslyn-skills-tests", $"{context.TestName}-{Guid.NewGuid():N}"));
+        Directory.CreateDirectory(this.Root);
     }
 
     public string Root { get; }
 
     public string Write(string relativePath, string content)
     {
-        var full = Path.Combine(Root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        var full = Path.Combine(this.Root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, content);
         return full;
@@ -26,15 +29,15 @@ internal sealed class TempRepository : IDisposable
     /// <summary>Writes the add-diagnostic settings file and reads it back.</summary>
     public Config WriteConfig(string content)
     {
-        Write(Config.RelativePath, content);
-        return new Config(Root);
+        this.Write(Config.RelativePath, content);
+        return new Config(this.Root);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(Root, true);
+            Directory.Delete(this.Root, true);
         }
         catch (IOException)
         {

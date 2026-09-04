@@ -1,3 +1,5 @@
+using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -10,7 +12,7 @@ namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 /// skill. A fenced block keeps the file a real Markdown document, so it renders and gets highlighted
 /// wherever it is read; JSON smuggled into a `---` front matter block does neither.
 /// </summary>
-internal sealed class Config
+internal sealed partial class Config
 {
     public const string RelativePath = ".claude/roslyn-skills/add-diagnostic.md";
 
@@ -19,8 +21,8 @@ internal sealed class Config
         new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     // `jsonc` is accepted as well as `json`, since comments are allowed and some editors only colour that tag.
-    private static readonly Regex FenceStart =
-        new(@"^ {0,3}(?<fence>`{3,}|~{3,})[ \t]*jsonc?[ \t]*$", RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"^ {0,3}(?<fence>`{3,}|~{3,})[ \t]*jsonc?[ \t]*$", RegexOptions.IgnoreCase)]
+    private static partial Regex FenceStart { get; }
 
     public string Path { get; }
     public bool Exists { get; }
@@ -33,32 +35,42 @@ internal sealed class Config
     public string? Error { get; }
 
     public JsonObject Values { get; } = new();
+
     public string Body { get; } = "";
 
     public Config(string root)
     {
-        Path = System.IO.Path.Combine(root, RelativePath);
-        Exists = File.Exists(Path);
-        if (!Exists) return;
-        var lines = File.ReadAllLines(Path);
+        this.Path = System.IO.Path.Combine(root, RelativePath);
+        this.Exists = File.Exists(this.Path);
+        if (!this.Exists)
+        {
+            return;
+        }
+
+        var lines = File.ReadAllLines(this.Path);
         var (start, end) = FindBlock(lines);
         if (start < 0)
         {
             // No `json` block: the file is notes only, which is a legitimate way to use it.
-            Body = string.Join('\n', lines).Trim();
+            this.Body = string.Join('\n', lines).Trim();
             return;
         }
-        Body = string.Join('\n', lines.Take(start).Concat(lines.Skip(end + 1))).Trim();
+
+        this.Body = string.Join('\n', lines.Take(start).Concat(lines.Skip(end + 1))).Trim();
         var block = string.Join('\n', lines[(start + 1)..end]).Trim();
-        if (block.Length == 0) return;
+        if (block.Length == 0)
+        {
+            return;
+        }
+
         try
         {
-            Values = JsonNode.Parse(block, NodeOptions, DocumentOptions) as JsonObject
-                ?? throw new JsonException("the block is not a JSON object");
+            this.Values = JsonNode.Parse(block, NodeOptions, DocumentOptions) as JsonObject
+                          ?? throw new JsonException("the block is not a JSON object");
         }
         catch (JsonException ex)
         {
-            Error = $"The json block in '{RelativePath}' is not valid JSON: {ex.Message}";
+            this.Error = $"The json block in '{RelativePath}' is not valid JSON: {ex.Message}";
         }
     }
 
@@ -71,28 +83,50 @@ internal sealed class Config
     {
         for (var i = 0; i < lines.Length; i++)
         {
-            if (FenceStart.Match(lines[i]) is not { Success: true } m) continue;
+            if (FenceStart.Match(lines[i]) is not { Success: true } m)
+            {
+                continue;
+            }
+
             var fence = m.Groups["fence"].Value;
             var close = new Regex($@"^ {{0,3}}{Regex.Escape(fence[0].ToString())}{{{fence.Length},}}[ \t]*$");
             for (var j = i + 1; j < lines.Length; j++)
-                if (close.IsMatch(lines[j])) return (i, j);
+            {
+                if (close.IsMatch(lines[j]))
+                {
+                    return (i, j);
+                }
+            }
+
             return (i, lines.Length);
         }
         return (-1, -1);
     }
 
-    public string? Get(string key) => Scalar(Values[key]);
+    public string? Get(string key)
+    {
+        return Scalar(this.Values[key]);
+    }
 
     /// <summary>One level down, for maps such as `categories`.</summary>
-    public string? Get(string key, string nested) => Values[key] is JsonObject m ? Scalar(m[nested]) : null;
+    public string? Get(string key, string nested)
+    {
+        return this.Values[key] is JsonObject m ? Scalar(m[nested]) : null;
+    }
 
-    public JsonObject ToJson() => (JsonObject)Values.DeepClone();
+    public JsonObject ToJson()
+    {
+        return (JsonObject)this.Values.DeepClone();
+    }
 
     /// <summary>Callers want strings; numbers and booleans keep their JSON spelling.</summary>
-    private static string? Scalar(JsonNode? node) => node switch
+    private static string? Scalar(JsonNode? node)
     {
-        null => null,
-        JsonValue v when v.GetValueKind() == JsonValueKind.String => v.GetValue<string>(),
-        _ => node.ToJsonString(),
-    };
+        return node switch
+        {
+            null => null,
+            JsonValue v when v.GetValueKind() == JsonValueKind.String => v.GetValue<string>(),
+            _ => node.ToJsonString(),
+        };
+    }
 }

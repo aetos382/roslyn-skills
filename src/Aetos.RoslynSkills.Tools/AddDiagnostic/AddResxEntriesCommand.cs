@@ -1,8 +1,14 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml;
+
+using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 
@@ -14,8 +20,11 @@ namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 /// diagnostic by Title -&gt; Message -&gt; Description (Justification for suppressions). Existing entries are never
 /// moved. Every file is re-parsed afterwards; exit code 1 means a file failed validation.
 /// </summary>
-internal static class AddResxEntriesCommand
+internal static partial class AddResxEntriesCommand
 {
+    [GeneratedRegex(@"^(?<base>.+?)(?<suffix>Title|Message|Description|Justification)$")]
+    private static partial Regex EntryName { get; }
+
     public static Command Create()
     {
         var resx = new Option<string[]>("--resx")
@@ -61,19 +70,34 @@ internal static class AddResxEntriesCommand
         var resxPaths = resxValues
             .SelectMany(v => v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .ToList();
-        if (resxPaths.Count == 0) return Json.Fail("--resx is required.", "Pass one --resx per file, or a comma-separated list.");
+        if (resxPaths.Count == 0)
+        {
+            return Json.Fail("--resx is required.", "Pass one --resx per file, or a comma-separated list.");
+        }
+
         if (resxPaths.FirstOrDefault(p => !File.Exists(p)) is { } missingResx)
+        {
             return Json.Fail($"resx not found: {missingResx}", "Pass an absolute path; the working directory is not the repository.");
+        }
 
         var suffixRank = new Dictionary<string, int> { ["Title"] = 0, ["Message"] = 1, ["Description"] = 2, ["Justification"] = 0 };
         var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
         if (idsFilePath is not null && File.Exists(idsFilePath))
-            foreach (var id in IdConst.Parse(File.ReadAllText(idsFilePath))) idMap[id.Name] = id.Value;
+        {
+            foreach (var id in IdConst.Parse(File.ReadAllText(idsFilePath)))
+            {
+                idMap[id.Name] = id.Value;
+            }
+        }
 
         SortKey KeyOf(string name)
         {
-            var m = Regex.Match(name, @"^(?<base>.+?)(?<suffix>Title|Message|Description|Justification)$");
-            if (!m.Success) return new SortKey(false, name, 0);
+            var m = EntryName.Match(name);
+            if (!m.Success)
+            {
+                return new SortKey(false, name, 0);
+            }
+
             var b = m.Groups["base"].Value;
             return idMap.TryGetValue(b, out var id) ? new SortKey(true, id, suffixRank[m.Groups["suffix"].Value]) : new SortKey(false, b, suffixRank[m.Groups["suffix"].Value]);
         }
@@ -81,16 +105,31 @@ internal static class AddResxEntriesCommand
         var entries = new List<Entry>();
         if (!validateOnly)
         {
-            if (rawEntries is not { } raw) return Json.Fail("--entries is required.", "Pass a JSON array or a path to a JSON file, or use --validate-only.");
+            if (rawEntries is not { } raw)
+            {
+                return Json.Fail("--entries is required.", "Pass a JSON array or a path to a JSON file, or use --validate-only.");
+            }
+
             var json = File.Exists(raw) ? File.ReadAllText(raw) : raw;
-            if (JsonNode.Parse(json) is not JsonArray arr) return Json.Fail("--entries must be a JSON array.", "See examples/resx-entries.json.");
+            if (JsonNode.Parse(json) is not JsonArray arr)
+            {
+                return Json.Fail("--entries must be a JSON array.", "See examples/resx-entries.json.");
+            }
+
             foreach (var n in arr)
             {
-                if (n is not JsonObject o) return Json.Fail("Each entry must be an object.", "See examples/resx-entries.json.");
+                if (n is not JsonObject o)
+                {
+                    return Json.Fail("Each entry must be an object.", "See examples/resx-entries.json.");
+                }
+
                 var name = o["name"]?.ToString();
                 var value = o["value"]?.ToString();
                 if (string.IsNullOrEmpty(name) || value is null)
+                {
                     return Json.Fail($"Each entry needs 'name' and 'value': {o.ToJsonString()}", "See examples/resx-entries.json.");
+                }
+
                 entries.Add(new Entry(name, value, o["comment"]?.ToString()));
             }
             entries = entries.OrderBy(e => KeyOf(e.Name), SortKey.Comparer).ToList();
@@ -106,18 +145,32 @@ internal static class AddResxEntriesCommand
             var doc = new XmlDocument { PreserveWhitespace = true };
             doc.LoadXml(content);
             if (doc.DocumentElement?.Name != "root")
+            {
                 return Json.Fail($"{file} is not a resx document (root element is '{doc.DocumentElement?.Name}').", "Check the path.");
+            }
+
             var rootEl = doc.DocumentElement!;
 
-            var added = new List<string>(); var skipped = new List<string>(); var updated = new List<string>();
+            var added = new List<string>();
+            var skipped = new List<string>();
+            var updated = new List<string>();
+
             if (!validateOnly)
             {
                 foreach (var e in entries)
                 {
                     if (rootEl.SelectSingleNode($"data[@name='{e.Name}']") is XmlElement existing)
                     {
-                        if (force) { existing.SelectSingleNode("value")!.InnerText = e.Value; updated.Add(e.Name); }
-                        else skipped.Add(e.Name);
+                        if (force)
+                        {
+                            existing.SelectSingleNode("value")!.InnerText = e.Value;
+                            updated.Add(e.Name);
+                        }
+                        else
+                        {
+                            skipped.Add(e.Name);
+                        }
+
                         continue;
                     }
 
@@ -126,13 +179,22 @@ internal static class AddResxEntriesCommand
                     XmlElement? anchor = null;
                     foreach (var n in dataNodes)
                     {
-                        if (SortKey.Comparer.Compare(KeyOf(n.GetAttribute("name")), key) <= 0) anchor = n; else break;
+                        if (SortKey.Comparer.Compare(KeyOf(n.GetAttribute("name")), key) <= 0)
+                        {
+                            anchor = n;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
 
                     // Indentation: copy what precedes a neighbouring <data>; with no <data> yet, copy what precedes the last
                     // element child of <root> (typically a <resheader>). Only the last line of that whitespace is used.
-                    XmlNode? sample = anchor ?? (XmlNode?)dataNodes.FirstOrDefault()
-                        ?? rootEl.ChildNodes.Cast<XmlNode>().LastOrDefault(n => n is XmlElement);
+                    var sample = anchor ??
+                                 (XmlNode?)dataNodes.FirstOrDefault() ??
+                                 rootEl.ChildNodes.Cast<XmlNode>().LastOrDefault(n => n is XmlElement);
+
                     var indent = newline + "  ";
                     if (sample?.PreviousSibling is XmlWhitespace { Value: { } wsValue })
                     {
@@ -203,16 +265,40 @@ internal static class AddResxEntriesCommand
             {
                 var check = new XmlDocument();
                 check.Load(full);
-                if (check.DocumentElement?.Name != "root") problems.Add($"root element is '{check.DocumentElement?.Name}', expected 'root'");
+
+                if (check.DocumentElement?.Name != "root")
+                {
+                    problems.Add($"root element is '{check.DocumentElement?.Name}', expected 'root'");
+                }
+
                 var names = check.SelectNodes("/root/data/@name")!.Cast<XmlAttribute>().Select(a => a.Value).ToList();
                 var dupes = names.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-                if (dupes.Count > 0) problems.Add("duplicate data names: " + string.Join(", ", dupes));
+                if (dupes.Count > 0)
+                {
+                    problems.Add("duplicate data names: " + string.Join(", ", dupes));
+                }
+
                 foreach (var n in added.Concat(updated))
-                    if (check.SelectSingleNode($"/root/data[@name='{n}']/value") is null) problems.Add($"entry '{n}' missing after write");
+                {
+                    if (check.SelectSingleNode($"/root/data[@name='{n}']/value") is null)
+                    {
+                        problems.Add($"entry '{n}' missing after write");
+                    }
+                }
+
                 foreach (XmlElement d in check.SelectNodes("/root/data")!)
-                    if (d.SelectSingleNode("value") is null) problems.Add($"data '{d.GetAttribute("name")}' has no <value>");
+                {
+                    if (d.SelectSingleNode("value") is null)
+                    {
+                        problems.Add($"data '{d.GetAttribute("name")}' has no <value>");
+                    }
+                }
+
                 var decls = File.ReadAllText(full).Split("<?xml").Length - 1;
-                if (decls > 1) problems.Add("multiple XML declarations");
+                if (decls > 1)
+                {
+                    problems.Add("multiple XML declarations");
+                }
             }
             catch (Exception ex)
             {
@@ -228,7 +314,11 @@ internal static class AddResxEntriesCommand
                 designerStale = added.Any(n => !Regex.IsMatch(dtext, $@"\b{Regex.Escape(n)}\b"));
             }
 
-            if (problems.Count > 0) anyInvalid = true;
+            if (problems.Count > 0)
+            {
+                anyInvalid = true;
+            }
+
             report.Add(new JsonObject
             {
                 ["file"] = file,
@@ -253,7 +343,11 @@ internal static class AddResxEntriesCommand
         // ID-mapped entries sort by ID value and come first; unmapped ones sort by base name.
         public static readonly IComparer<SortKey> Comparer = Comparer<SortKey>.Create((a, b) =>
         {
-            if (a.Known != b.Known) return a.Known ? -1 : 1;
+            if (a.Known != b.Known)
+            {
+                return a.Known ? -1 : 1;
+            }
+
             var c = string.CompareOrdinal(a.Primary, b.Primary);
             return c != 0 ? c : a.Rank.CompareTo(b.Rank);
         });

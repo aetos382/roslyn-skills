@@ -1,6 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 
-namespace Aetos.RoslynSkills.Tools;
+namespace Aetos.RoslynSkills.Tools.Internal;
 
 /// <summary>One evaluated MSBuild item: its identity, resolved path, and metadata.</summary>
 internal sealed record MsBuildItem(string Identity, string? FullPath, Dictionary<string, string> Metadata);
@@ -13,32 +17,60 @@ internal sealed class Evaluation
 
     public string? Error { get; private init; }
 
-    public string? Property(string name) =>
-        _properties.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : null;
+    public string? Property(string name)
+    {
+        return this._properties.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : null;
+    }
 
-    public bool IsTrue(string name) => string.Equals(Property(name), "true", StringComparison.OrdinalIgnoreCase);
+    public bool IsTrue(string name)
+    {
+        return string.Equals(this.Property(name), "true", StringComparison.OrdinalIgnoreCase);
+    }
 
-    public IReadOnlyList<MsBuildItem> Items(string name) =>
-        _items.TryGetValue(name, out var list) ? list : Array.Empty<MsBuildItem>();
+    public IReadOnlyList<MsBuildItem> Items(string name)
+    {
+        return this._items.TryGetValue(name, out var list) ? list : Array.Empty<MsBuildItem>();
+    }
 
-    public static Evaluation Failed(string error) => new() { Error = error };
+    public static Evaluation Failed(string error)
+    {
+        return new Evaluation { Error = error };
+    }
 
     public static Evaluation Parse(string json)
     {
         var e = new Evaluation();
-        if (JsonNode.Parse(json) is not JsonObject o) return Failed("MSBuild returned output that is not JSON.");
+        if (JsonNode.Parse(json) is not JsonObject o)
+        {
+            return Failed("MSBuild returned output that is not JSON.");
+        }
+
         if (o["Properties"] is JsonObject props)
-            foreach (var (k, v) in props) e._properties[k] = v?.ToString() ?? "";
+        {
+            foreach (var (k, v) in props)
+            {
+                e._properties[k] = v?.ToString() ?? "";
+            }
+        }
+
         if (o["Items"] is JsonObject items)
         {
             foreach (var (name, arr) in items)
             {
                 var list = new List<MsBuildItem>();
-                foreach (var n in arr as JsonArray ?? new JsonArray())
+                foreach (var n in arr as JsonArray ?? [])
                 {
-                    if (n is not JsonObject io) continue;
+                    if (n is not JsonObject io)
+                    {
+                        continue;
+                    }
+
                     var meta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (mk, mv) in io) meta[mk] = mv?.ToString() ?? "";
+                    foreach (var (mk, mv) in io)
+                    {
+                        meta[mk] = mv?.ToString() ?? "";
+                    }
+
                     meta.TryGetValue("Identity", out var identity);
                     meta.TryGetValue("FullPath", out var fullPath);
                     list.Add(new MsBuildItem(identity ?? "", string.IsNullOrWhiteSpace(fullPath) ? null : fullPath, meta));
@@ -85,10 +117,20 @@ internal static class MsBuild
             var message = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
             return Evaluation.Failed(FirstLines(message, 3));
         }
-        try { return Evaluation.Parse(stdout); }
-        catch (Exception ex) { return Evaluation.Failed(ex.Message); }
+
+        try
+        {
+            return Evaluation.Parse(stdout);
+        }
+        catch (Exception ex)
+        {
+            return Evaluation.Failed(ex.Message);
+        }
     }
 
-    private static string FirstLines(string text, int count) =>
-        string.Join(" ", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(count));
+    private static string FirstLines(string text, int count)
+    {
+        return string.Join(" ",
+            text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(count));
+    }
 }

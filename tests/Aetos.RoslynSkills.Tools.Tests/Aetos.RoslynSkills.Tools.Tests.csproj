@@ -2,7 +2,8 @@
 <Project Sdk="MSTest.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Aetos.RoslynSkills.Tools.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>

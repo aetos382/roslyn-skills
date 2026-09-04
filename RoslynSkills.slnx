@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aetos.RoslynSkills.Tools.Tests/Aetos.RoslynSkills.Tools.Tests.csproj" />
+  </Folder>
+</Solution>

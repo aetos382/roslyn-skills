@@ -1,15 +1,17 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 
-namespace Aetos.RoslynSkills.Tools;
+namespace Aetos.RoslynSkills.Tools.Internal;
 
 /// <summary>Splits a resx file name into its base name and its culture, as in Resources.ja.resx.</summary>
-internal static class ResxName
+internal static partial class ResxName
 {
     // Subtags are matched in the casing culture names are written with — region ES, UN M.49 419, script Hans —
     // so a base name whose last segment merely contains a hyphen is not read as one.
-    private static readonly Regex CultureSuffix = new(
-        @"^(?<base>.+)\.(?<culture>(?<language>[a-z]{2,3})(?<subtags>(?:-(?:[A-Z]{2}|[0-9]{3}|[A-Z][a-z]{3}))*))$",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"^(?<base>.+)\.(?<culture>(?<language>[a-z]{2,3})(?<subtags>(?:-(?:[A-Z]{2}|[0-9]{3}|[A-Z][a-z]{3}))*))$")]
+    private static partial Regex CultureSuffix { get; }
 
     /// <summary>
     /// The languages a bare suffix is accepted as. A list rather than a CultureInfo lookup because the shape
@@ -31,8 +33,16 @@ internal static class ResxName
     public static (string Base, string Culture) Split(string path)
     {
         var stem = Path.GetFileNameWithoutExtension(path);
-        if (CultureSuffix.Match(stem) is not { Success: true } m) return (stem, "");
-        if (m.Groups["subtags"].Length == 0 && !Languages.Contains(m.Groups["language"].Value)) return (stem, "");
+        if (CultureSuffix.Match(stem) is not { Success: true } m)
+        {
+            return (stem, "");
+        }
+
+        if (m.Groups["subtags"].Length == 0 && !Languages.Contains(m.Groups["language"].Value))
+        {
+            return (stem, "");
+        }
+
         return (m.Groups["base"].Value, m.Groups["culture"].Value);
     }
 }

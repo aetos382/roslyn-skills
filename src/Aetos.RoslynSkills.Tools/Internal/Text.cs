@@ -1,6 +1,8 @@
+using System;
+using System.IO;
 using System.Text;
 
-namespace Aetos.RoslynSkills.Tools;
+namespace Aetos.RoslynSkills.Tools.Internal;
 
 internal static class Text
 {

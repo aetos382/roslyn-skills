@@ -1,15 +1,36 @@
 <Project>
-
   <PropertyGroup>
-    <!--
-      net10.0 is the floor the tool already needs: it shells out to `dotnet msbuild` for project
-      evaluation, so an SDK of that generation has to be present anyway.
-    -->
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
-    <!-- packages.lock.json is what CI keys the NuGet cache on. -->
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <DebugType>portable</DebugType>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <WarningLevel>9999</WarningLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <DefaultItemExcludesInProjectFolder>
+      $(DefaultItemExcludesInProjectFolder);
+      packages.lock.json;
+      TestResults/**;
+      *.lscache
+    </DefaultItemExcludesInProjectFolder>
+    <DefaultItemExcludes>
+      $(DefaultItemExcludes);
+      *.log;
+      *.binlog
+    </DefaultItemExcludes>
+    <IsPackable>false</IsPackable>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <DisableImplicitLibraryPacksFolder>true</DisableImplicitLibraryPacksFolder>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
 </Project>
