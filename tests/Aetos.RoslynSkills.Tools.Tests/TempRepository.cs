@@ -10,8 +10,11 @@ namespace Aetos.RoslynSkills.Tools.Tests;
 /// <summary>A throwaway directory standing in for a repository under inspection.</summary>
 internal sealed class TempRepository : IDisposable
 {
+    private readonly TestContext _context;
+
     public TempRepository(TestContext context)
     {
+        this._context = context;
         this.Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "roslyn-skills-tests", $"{context.TestName}-{Guid.NewGuid():N}"));
         Directory.CreateDirectory(this.Root);
     }
@@ -39,8 +42,11 @@ internal sealed class TempRepository : IDisposable
         {
             Directory.Delete(this.Root, true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Failing to clean up must not fail the test, but it must not be invisible either: the directories
+            // pile up under %TEMP%/roslyn-skills-tests and nobody would know where they came from.
+            this._context.WriteLine($"could not delete {this.Root}: {ex.Message}");
         }
     }
 }

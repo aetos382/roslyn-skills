@@ -59,9 +59,11 @@ Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow
 worker process outlives it holding file locks. `find-conventions` already does this internally. The
 switch is spelled `-nodeReuse:false` or `-nr:false`; `/node-reuse:false` is rejected with MSB1001.
 
-Every subcommand prints JSON, including for expected failures (`{"error": ..., "hint": ...}` with exit
-code 1) and for a mistyped command line, so read the output rather than guessing what it would return. A
-stack trace means a bug in the tool, not a bad argument.
+Every subcommand prints JSON on stdout, including for expected failures (`{"error": ..., "hint": ...}`
+with exit code 1) and for a mistyped command line, so read the output rather than guessing what it would
+return. Exit code 2 is a bug in the tool rather than a bad argument: the same two fields plus
+`"unexpected": true`, `exception` and `stackTrace`. Report it and stop; re-running the same command will
+not help.
 
 **Run it from the scratchpad**, not from anywhere inside the target repository, and pass absolute paths
 for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
@@ -100,8 +102,9 @@ in the single question round of Step 3.
 - `analyzerReleases[]` — the Shipped/Unshipped pair per project and `analyzersPackage`
   (`direct` / `viaCodeAnalysis` / `none`), a hint about the release-tracking analyzer that only 5e proves.
 - `git.docUrlTemplate`, `idSharing` (`AnalyzerProject`, `LinkedFile`, `SharedProject`, `SharedFile`, or
-  `none` — where the IDs live, see `references/id-conventions.md`), `diagnosticIdsProject` (null when the
-  IDs file belongs to no project), `config`.
+  `none` — where the IDs live, see `references/id-conventions.md`), `idSharingReliable` (false when a
+  project MSBuild could not evaluate leaves `none` meaning "unknown"), `diagnosticIdsProject` (null when
+  the IDs file belongs to no project), `config`.
 - `excludedPluginDirectories` — Claude Code plugin trees found inside the repository and skipped, this
   plugin included when it is installed there. Their sample files are documentation and must never be
   read as the repository's conventions; do not go looking in them by hand either.
@@ -199,6 +202,13 @@ When Step 1 reported `diagnosticPrefix` as null, do not try `--category` at all:
 returns `{"error": ..., "hint": ...}` and no ID, which is a normal outcome for a repository with no
 diagnostics yet, not a broken command.
 
+The IDs file may not exist yet either — 5a is what creates it — so passing `--prefix` (and `--band <n>`
+for a diagnostic) allocates the first ID of a file that is not there. The output then says
+`"idsFileExists": false`, which is the reminder that 5a has a file to create and not just a line to
+insert. Without `--prefix` a path that does not exist is reported as an error rather than read as an empty
+file: a mistyped path would otherwise restart the numbering and hand out an ID the repository has already
+shipped.
+
 When the output has `"unresolvedCategory": true`, the category has no band yet: choose the next unused
 band digit and re-run with `--prefix <PREFIX> --band <n>`, then note that 5a must also write the
 `// <Category> (<PREFIX><n>xxx)` header. Once such a header exists, `--category <name>` alone is enough,
@@ -287,7 +297,9 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
 - **5g. ID sharing** (only when a code-fix project exists and `idSharing` is `none`; any other value
   means the repository already has an arrangement, so skip): ask for `AnalyzerProject` (recommended) or
   `LinkedFile`, then add the `<ProjectReference>` or the linked `<Compile>` item to the code-fix project
-  and set the IDs class visibility accordingly. When `diagnosticIdsProject` is null the IDs file belongs
+  and set the IDs class visibility accordingly. When `idSharingReliable` is false, `none` only means the
+  detection could not see: say so and ask before adding anything, since the reference may already be there
+  in a project MSBuild failed to evaluate. When `diagnosticIdsProject` is null the IDs file belongs
   to no project, so add the linked `<Compile>` item to each side (`SharedFile`) instead of moving it.
 - **5h. Config file**: create or update `.claude/roslyn-skills/add-diagnostic.md`
   (`examples/add-diagnostic.md`, creating the directory when missing) only

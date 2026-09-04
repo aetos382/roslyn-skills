@@ -109,6 +109,47 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     }
 
     /// <summary>
+    /// Guarantees a shorter run of backticks inside the block does not close it, which is the CommonMark rule that
+    /// lets a value contain a fence at all — closing early would cut the settings in half and report the remainder
+    /// as invalid JSON.
+    /// </summary>
+    [TestMethod]
+    public void AShorterFenceInsideTheBlockDoesNotCloseIt()
+    {
+        var config = this._repo.WriteConfig(string.Join('\n', [
+            "````json",
+            /*lang=json,strict*/
+            """{ "diagnosticPrefix": "CTS", "docsDir": "``` docs/rules" }""",
+            "````",
+            "notes",
+        ]));
+
+        Assert.IsNull(config.Error);
+        Assert.AreEqual("CTS", config.Get("diagnosticPrefix"));
+        Assert.AreEqual("``` docs/rules", config.Get("docsDir"));
+    }
+
+    /// <summary>
+    /// Guarantees a fence is only closed by its own character: CommonMark does not let tildes close backticks, so
+    /// the block runs on and the settings do not parse. Reported as an error rather than read as far as the tildes,
+    /// because the file does not render as the author intended either.
+    /// </summary>
+    [TestMethod]
+    public void TildesDoNotCloseABacktickFence()
+    {
+        var config = this._repo.WriteConfig(
+            """
+            ```json
+            { "diagnosticPrefix": "CTS" }
+            ~~~
+            notes
+            """);
+
+        Assert.IsNotNull(config.Error);
+        Assert.Contains(Config.RelativePath, config.Error);
+    }
+
+    /// <summary>
     /// Guarantees an unclosed fence is read to the end of the document rather than reported as an error,
     /// which is how CommonMark treats it — the file renders that way, so it must parse that way.
     /// </summary>

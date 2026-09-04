@@ -11,13 +11,10 @@ trim_trailing_whitespace = true
 [*.cs]
 indent_size = 4
 
-[*.{json,md}]
-indent_size = 2
-
 [*.md]
 trim_trailing_whitespace = false
 
-[**/*{.-}lock.json]
+[**/*{.,-}lock.json]
 generated_code = true
 charset = unset
 end_of_line = unset

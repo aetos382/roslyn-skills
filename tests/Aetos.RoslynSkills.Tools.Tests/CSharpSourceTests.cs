@@ -171,4 +171,50 @@ public sealed class CSharpSourceTests
         Assert.IsNull(CSharpSource.Parse("// [assembly: NeutralResourcesLanguage(\"ja\")]")
             .AssemblyAttributeArgument("NeutralResourcesLanguage"));
     }
+
+    /// <summary>
+    /// Guarantees the IDs class is reported with the accessibility it declares, and that an omitted modifier is
+    /// reported as internal rather than as nothing: the value is what a new ID constant is declared with, so it
+    /// has to be a keyword that can be written there.
+    /// </summary>
+    [TestMethod]
+    public void TheStaticClassIsReportedWithTheAccessibilityItDeclares()
+    {
+        Assert.AreEqual("public", CSharpSource.Parse("public static class DiagnosticIds { }").StaticClass().Visibility);
+
+        var (name, visibility) = CSharpSource.Parse("static class DiagnosticIds { }").StaticClass();
+
+        Assert.AreEqual("DiagnosticIds", name);
+        Assert.AreEqual("internal", visibility);
+    }
+
+    /// <summary>
+    /// Guarantees an accessibility a member cannot be reached through is reported as internal, since the value is
+    /// pasted into a new declaration: `private static class` would otherwise have the skill write a private
+    /// constant that the analyzer referencing it cannot see.
+    /// </summary>
+    [TestMethod]
+    public void AnUnusableAccessibilityIsReportedAsInternal()
+    {
+        var (name, visibility) = CSharpSource.Parse(
+            """
+            internal sealed class Analyzer
+            {
+                private static class DiagnosticIds { }
+            }
+            """).StaticClass();
+
+        Assert.AreEqual("DiagnosticIds", name);
+        Assert.AreEqual("internal", visibility);
+    }
+
+    /// <summary>Guarantees a file with no static class is reported as having none rather than as an empty name.</summary>
+    [TestMethod]
+    public void AFileWithNoStaticClassReportsNoName()
+    {
+        var (name, visibility) = CSharpSource.Parse("internal sealed class Analyzer { }").StaticClass();
+
+        Assert.IsNull(name);
+        Assert.AreEqual("internal", visibility);
+    }
 }

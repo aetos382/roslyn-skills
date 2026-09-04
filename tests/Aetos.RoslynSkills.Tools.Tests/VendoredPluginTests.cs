@@ -6,21 +6,13 @@ using Aetos.RoslynSkills.Tools.Internal;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
-/// <summary>
-/// The find-conventions command calls FindVendoredPlugins once and the result is kept in static state that
-/// IsExcluded then reads, so these tests run one at a time and reset it afterwards.
-/// </summary>
 [TestClass]
-[DoNotParallelize]
 public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
 {
     private readonly TempRepository _repo = new(testContext);
 
     public void Dispose()
     {
-        // Scanning a directory with no markers in it is the only way to clear the static exclusion list.
-        var empty = Directory.CreateDirectory(Path.Combine(this._repo.Root, "no-plugins-here"));
-        Repo.FindVendoredPlugins(empty.FullName);
         this._repo.Dispose();
     }
 
@@ -34,10 +26,10 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
         this._repo.Write(".claude-plugin/plugin.json", "{}");
         this._repo.Write("skills/add-diagnostic/SKILL.md", "# skill");
 
-        var found = Repo.FindVendoredPlugins(this._repo.Root);
+        var scan = new RepoScan(this._repo.Root);
 
-        Assert.DoesNotContain(this._repo.Root, found.ToArray());
-        Assert.IsFalse(Repo.IsExcluded(Path.Combine(this._repo.Root, "src", "Analyzers", "A.cs")));
+        Assert.DoesNotContain(this._repo.Root, scan.VendoredPlugins.ToArray());
+        Assert.IsFalse(scan.IsExcluded(Path.Combine(this._repo.Root, "src", "Analyzers", "A.cs")));
     }
 
     /// <summary>
@@ -52,10 +44,10 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
         this._repo.Write("vendor/roslyn-skills/skills/add-diagnostic/SKILL.md", "# skill");
         this._repo.Write("vendor/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
 
-        var found = Repo.FindVendoredPlugins(this._repo.Root);
+        var scan = new RepoScan(this._repo.Root);
 
-        Assert.AreSequenceEqual([plugin], found.ToArray());
-        Assert.IsTrue(Repo.IsExcluded(Path.Combine(plugin, "skills", "add-diagnostic", "examples", "DiagnosticIds.cs")));
+        Assert.AreSequenceEqual([plugin], scan.VendoredPlugins.ToArray());
+        Assert.IsTrue(scan.IsExcluded(Path.Combine(plugin, "skills", "add-diagnostic", "examples", "DiagnosticIds.cs")));
     }
 
     /// <summary>
@@ -68,9 +60,7 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
         var skill = Path.Combine(this._repo.Root, "tools", "my-skill");
         this._repo.Write("tools/my-skill/SKILL.md", "# skill");
 
-        var found = Repo.FindVendoredPlugins(this._repo.Root);
-
-        Assert.AreSequenceEqual([skill], found.ToArray());
+        Assert.AreSequenceEqual([skill], new RepoScan(this._repo.Root).VendoredPlugins.ToArray());
     }
 
     /// <summary>Guarantees an installed-plugins directory is excluded, which is where Claude Code caches plugins.</summary>
@@ -80,9 +70,7 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
         var plugins = Path.Combine(this._repo.Root, ".claude", "plugins");
         this._repo.Write(".claude/plugins/roslyn-skills/skills/add-diagnostic/examples/DiagnosticIds.cs", "// sample");
 
-        var found = Repo.FindVendoredPlugins(this._repo.Root);
-
-        Assert.Contains(plugins, found.ToArray());
+        Assert.Contains(plugins, new RepoScan(this._repo.Root).VendoredPlugins.ToArray());
     }
 
     /// <summary>Guarantees a repository with no plugin in it excludes nothing.</summary>
@@ -91,6 +79,43 @@ public sealed class VendoredPluginTests(TestContext testContext) : IDisposable
     {
         this._repo.Write("src/Analyzers/A.cs", "// source");
 
-        Assert.IsEmpty(Repo.FindVendoredPlugins(this._repo.Root));
+        Assert.IsEmpty(new RepoScan(this._repo.Root).VendoredPlugins);
+    }
+
+    /// <summary>
+    /// Guarantees one scan's exclusions cannot reach another: each scan carries its own, so a repository with a
+    /// plugin in it does not leave a later scan of a plugin-free repository excluding the same paths.
+    /// </summary>
+    [TestMethod]
+    public void OneScansExclusionsDoNotLeakIntoAnother()
+    {
+        this._repo.Write("vendor/plugin/SKILL.md", "# skill");
+        var withPlugin = new RepoScan(this._repo.Root);
+        Assert.IsNotEmpty(withPlugin.VendoredPlugins);
+
+        var other = Directory.CreateDirectory(Path.Combine(this._repo.Root, "elsewhere"));
+        var withoutPlugin = new RepoScan(other.FullName);
+
+        Assert.IsEmpty(withoutPlugin.VendoredPlugins);
+        Assert.IsFalse(withoutPlugin.IsExcluded(Path.Combine(this._repo.Root, "vendor", "plugin", "sample.cs")));
+        Assert.IsTrue(withPlugin.IsExcluded(Path.Combine(this._repo.Root, "vendor", "plugin", "sample.cs")));
+    }
+
+    /// <summary>
+    /// Guarantees the files a scan reports skip the vendored plugin and the build output, since a sample file
+    /// under either is documentation rather than a source file of the repository.
+    /// </summary>
+    [TestMethod]
+    public void TheFileListSkipsVendoredPluginsAndBuildOutput()
+    {
+        this._repo.Write("src/Analyzers/A.cs", "// source");
+        this._repo.Write("src/Analyzers/obj/Generated.cs", "// generated");
+        this._repo.Write("vendor/plugin/SKILL.md", "# skill");
+        this._repo.Write("vendor/plugin/examples/DiagnosticIds.cs", "// sample");
+
+        var scan = new RepoScan(this._repo.Root);
+        var files = scan.Files(scan.Root, "*.cs").Select(scan.Rel).ToList();
+
+        Assert.AreSequenceEqual(["src/Analyzers/A.cs"], files);
     }
 }

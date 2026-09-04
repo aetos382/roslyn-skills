@@ -13,7 +13,8 @@ namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 ///
 /// Template resolution: --template, then `docUrlTemplate` in .claude/roslyn-skills/add-diagnostic.md, then
 /// https://github.com/{owner}/{repo}/blob/{branch}/{path} when origin is on github.com.
-/// Owner/repo come from the origin remote; branch from origin/HEAD, then `gh repo view`, then the current branch.
+/// Owner/repo come from the origin remote; branch from origin/HEAD, then `gh repo view`. The checked out branch is
+/// not a fallback, see <see cref="GitInfo.Read"/>.
 /// </summary>
 internal static class DocUrlCommand
 {
@@ -44,7 +45,8 @@ internal static class DocUrlCommand
 
     private static int Run(string rawDoc, string? template, string repoPath)
     {
-        var root = Repo.GetRoot(repoPath);
+        var rootInfo = Repo.GetRoot(repoPath);
+        var root = rootInfo.Path;
 
         string doc;
         if (Path.IsPathFullyQualified(rawDoc))
@@ -54,8 +56,9 @@ internal static class DocUrlCommand
             var rel = Path.GetRelativePath(root, Path.GetFullPath(rawDoc)).Replace('\\', '/');
             if (rel.StartsWith("../", StringComparison.Ordinal) || Path.IsPathFullyQualified(rel))
             {
+                var hint = "Pass the documentation path relative to the repository root, such as docs/rules/ABC1001.md, or point --path at the right repository.";
                 return Json.Fail($"--doc '{rawDoc}' is outside the repository at '{root}'.",
-                    "Pass the documentation path relative to the repository root, such as docs/rules/ABC1001.md, or point --path at the right repository.");
+                    rootInfo.Detected ? hint : $"No repository was found at or above --path, so '{root}' is being used as the root ({rootInfo.Error}). {hint}");
             }
 
             doc = rel;
@@ -76,17 +79,17 @@ internal static class DocUrlCommand
         template ??= config.Get("docUrlTemplate") ?? git.DefaultTemplate;
         if (template is null)
         {
-            return Json.Fail($"No docUrlTemplate configured and origin is not on github.com (host: '{git.Host}').",
+            return Json.Fail($"No docUrlTemplate configured and origin is not on github.com (host: '{git.Repository?.Host}').",
                 $"Add 'docUrlTemplate' to {Config.RelativePath} or pass --template.");
         }
 
         var missing = new List<string>();
-        if (template.Contains("{owner}") && git.Owner is null)
+        if (template.Contains("{owner}") && git.Repository is null)
         {
             missing.Add("owner");
         }
 
-        if (template.Contains("{repo}") && git.RepoName is null)
+        if (template.Contains("{repo}") && git.Repository is null)
         {
             missing.Add("repo");
         }
@@ -99,17 +102,21 @@ internal static class DocUrlCommand
         if (missing.Count > 0)
         {
             return Json.Fail("Could not determine: " + string.Join(", ", missing) + ".",
-                "Check the git remote, or pass --template without those placeholders.");
+                "The branch is the remote's default branch, read from refs/remotes/origin/HEAD (set it with `git remote set-head origin --auto`) or from `gh repo view`; the currently checked out branch is not used, because a help link built from it dies with the branch. Otherwise check the git remote, or pass --template without those placeholders.");
         }
 
-        var url = template.Replace("{owner}", git.Owner ?? "").Replace("{repo}", git.RepoName ?? "").Replace("{branch}", git.DefaultBranch ?? "").Replace("{path}", doc);
+        var url = template
+            .Replace("{owner}", git.Repository?.Owner ?? "")
+            .Replace("{repo}", git.Repository?.Name ?? "")
+            .Replace("{branch}", git.DefaultBranch ?? "")
+            .Replace("{path}", doc);
 
         Json.Print(new JsonObject
         {
             ["url"] = url,
             ["template"] = template,
-            ["owner"] = git.Owner,
-            ["repo"] = git.RepoName,
+            ["owner"] = git.Repository?.Owner,
+            ["repo"] = git.Repository?.Name,
             ["branch"] = git.DefaultBranch,
             ["path"] = doc,
         });

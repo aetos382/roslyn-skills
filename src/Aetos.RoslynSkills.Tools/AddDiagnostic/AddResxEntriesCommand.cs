@@ -4,6 +4,7 @@ using System.CommandLine;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -82,8 +83,16 @@ internal static partial class AddResxEntriesCommand
 
         var suffixRank = new Dictionary<string, int> { ["Title"] = 0, ["Message"] = 1, ["Description"] = 2, ["Justification"] = 0 };
         var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (idsFilePath is not null && File.Exists(idsFilePath))
+        if (idsFilePath is not null)
         {
+            // A missing file would leave every new entry sorted by name instead of by ID, silently producing a
+            // different order than the one the option was passed to get.
+            if (!File.Exists(idsFilePath))
+            {
+                return Json.Fail($"IDs file not found: {idsFilePath}",
+                    "Pass an absolute path, or omit --ids-file to sort new entries by name.");
+            }
+
             foreach (var id in IdConst.Parse(File.ReadAllText(idsFilePath)))
             {
                 idMap[id.Name] = id.Value;
@@ -111,7 +120,18 @@ internal static partial class AddResxEntriesCommand
             }
 
             var json = File.Exists(raw) ? File.ReadAllText(raw) : raw;
-            if (JsonNode.Parse(json) is not JsonArray arr)
+            JsonNode? parsed;
+            try
+            {
+                parsed = JsonNode.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                // The caller wrote this JSON, so it is a bad argument like the two below and not a bug in the tool.
+                return Json.Fail($"--entries is not valid JSON: {ex.Message}", "See examples/resx-entries.json.");
+            }
+
+            if (parsed is not JsonArray arr)
             {
                 return Json.Fail("--entries must be a JSON array.", "See examples/resx-entries.json.");
             }
@@ -132,7 +152,7 @@ internal static partial class AddResxEntriesCommand
 
                 entries.Add(new Entry(name, value, o["comment"]?.ToString()));
             }
-            entries = entries.OrderBy(e => KeyOf(e.Name), SortKey.Comparer).ToList();
+            entries = entries.OrderBy(e => KeyOf(e.Name)).ToList();
         }
 
         var report = new JsonArray();
@@ -140,30 +160,57 @@ internal static partial class AddResxEntriesCommand
         foreach (var file in resxPaths)
         {
             var full = Path.GetFullPath(file);
-            var (content, hasBom, newline) = Text.ReadPreserving(full);
-
-            var doc = new XmlDocument { PreserveWhitespace = true };
-            doc.LoadXml(content);
-            if (doc.DocumentElement?.Name != "root")
-            {
-                return Json.Fail($"{file} is not a resx document (root element is '{doc.DocumentElement?.Name}').", "Check the path.");
-            }
-
-            var rootEl = doc.DocumentElement!;
-
             var added = new List<string>();
             var skipped = new List<string>();
             var updated = new List<string>();
+            var problems = new List<string>();
 
-            if (!validateOnly)
+            // Each file is reported on separately rather than aborting the run: by the time one file turns out to
+            // be unreadable, the files before it have already been rewritten, and a report that never got printed
+            // would leave the caller with no record of that.
+            XmlDocument? doc = null;
+            var hasBom = false;
+            var newline = "\n";
+            try
             {
+                (var content, hasBom, newline) = Text.ReadPreserving(full);
+                // Assigned only once the document is known to be usable: a half-loaded XmlDocument has no
+                // DocumentElement, and the code below reads that one without checking.
+                var loaded = new XmlDocument { PreserveWhitespace = true };
+                loaded.LoadXml(content);
+                if (loaded.DocumentElement?.Name != "root")
+                {
+                    problems.Add($"not a resx document (root element is '{loaded.DocumentElement?.Name}')");
+                }
+                else
+                {
+                    doc = loaded;
+                }
+            }
+            catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+            {
+                problems.Add("read failed: " + ex.Message);
+            }
+
+            if (doc is not null && !validateOnly)
+            {
+                var rootEl = doc.DocumentElement!;
                 foreach (var e in entries)
                 {
-                    if (rootEl.SelectSingleNode($"data[@name='{e.Name}']") is XmlElement existing)
+                    if (DataElement(rootEl, e.Name) is { } existing)
                     {
                         if (force)
                         {
-                            existing.SelectSingleNode("value")!.InnerText = e.Value;
+                            // A <data> with no <value> is malformed but does occur; give it one rather than
+                            // failing on a null the validation pass would have reported anyway.
+                            var valueElement = ChildElement(existing, "value");
+                            if (valueElement is null)
+                            {
+                                valueElement = doc.CreateElement("value");
+                                existing.AppendChild(valueElement);
+                            }
+
+                            valueElement.InnerText = e.Value;
                             updated.Add(e.Name);
                         }
                         else
@@ -174,12 +221,12 @@ internal static partial class AddResxEntriesCommand
                         continue;
                     }
 
-                    var dataNodes = rootEl.SelectNodes("data")!.Cast<XmlElement>().ToList();
+                    var dataNodes = DataElements(rootEl);
                     var key = KeyOf(e.Name);
                     XmlElement? anchor = null;
                     foreach (var n in dataNodes)
                     {
-                        if (SortKey.Comparer.Compare(KeyOf(n.GetAttribute("name")), key) <= 0)
+                        if (KeyOf(n.GetAttribute("name")).CompareTo(key) <= 0)
                         {
                             anchor = n;
                         }
@@ -260,49 +307,54 @@ internal static partial class AddResxEntriesCommand
             }
 
             // ---- Validation -----------------------------------------------------
-            var problems = new List<string>();
-            try
+            if (doc is not null)
             {
-                var check = new XmlDocument();
-                check.Load(full);
-
-                if (check.DocumentElement?.Name != "root")
+                try
                 {
-                    problems.Add($"root element is '{check.DocumentElement?.Name}', expected 'root'");
-                }
+                    var check = new XmlDocument();
+                    check.Load(full);
 
-                var names = check.SelectNodes("/root/data/@name")!.Cast<XmlAttribute>().Select(a => a.Value).ToList();
-                var dupes = names.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-                if (dupes.Count > 0)
-                {
-                    problems.Add("duplicate data names: " + string.Join(", ", dupes));
-                }
-
-                foreach (var n in added.Concat(updated))
-                {
-                    if (check.SelectSingleNode($"/root/data[@name='{n}']/value") is null)
+                    if (check.DocumentElement is not { Name: "root" } checkRoot)
                     {
-                        problems.Add($"entry '{n}' missing after write");
+                        problems.Add($"root element is '{check.DocumentElement?.Name}', expected 'root'");
+                    }
+                    else
+                    {
+                        var dataElements = DataElements(checkRoot);
+                        var dupes = dataElements.GroupBy(d => d.GetAttribute("name"))
+                            .Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+                        if (dupes.Count > 0)
+                        {
+                            problems.Add("duplicate data names: " + string.Join(", ", dupes));
+                        }
+
+                        foreach (var n in added.Concat(updated))
+                        {
+                            if (DataElement(checkRoot, n) is not { } written || ChildElement(written, "value") is null)
+                            {
+                                problems.Add($"entry '{n}' missing after write");
+                            }
+                        }
+
+                        foreach (var d in dataElements)
+                        {
+                            if (ChildElement(d, "value") is null)
+                            {
+                                problems.Add($"data '{d.GetAttribute("name")}' has no <value>");
+                            }
+                        }
+                    }
+
+                    var decls = File.ReadAllText(full).Split("<?xml").Length - 1;
+                    if (decls > 1)
+                    {
+                        problems.Add("multiple XML declarations");
                     }
                 }
-
-                foreach (XmlElement d in check.SelectNodes("/root/data")!)
+                catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
                 {
-                    if (d.SelectSingleNode("value") is null)
-                    {
-                        problems.Add($"data '{d.GetAttribute("name")}' has no <value>");
-                    }
+                    problems.Add("XML parse failed: " + ex.Message);
                 }
-
-                var decls = File.ReadAllText(full).Split("<?xml").Length - 1;
-                if (decls > 1)
-                {
-                    problems.Add("multiple XML declarations");
-                }
-            }
-            catch (Exception ex)
-            {
-                problems.Add("XML parse failed: " + ex.Message);
             }
 
             // A satellite has no Designer of its own; the neutral file's is the one that goes stale.
@@ -310,8 +362,15 @@ internal static partial class AddResxEntriesCommand
             var designerStale = false;
             if (File.Exists(designer) && added.Count > 0)
             {
-                var dtext = File.ReadAllText(designer);
-                designerStale = added.Any(n => !Regex.IsMatch(dtext, $@"\b{Regex.Escape(n)}\b"));
+                try
+                {
+                    var dtext = File.ReadAllText(designer);
+                    designerStale = added.Any(n => !Regex.IsMatch(dtext, $@"\b{Regex.Escape(n)}\b"));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    problems.Add($"could not read {Path.GetFileName(designer)} to check whether it is stale: {ex.Message}");
+                }
             }
 
             if (problems.Count > 0)
@@ -336,20 +395,51 @@ internal static partial class AddResxEntriesCommand
         return anyInvalid ? 1 : 0;
     }
 
+    /// <summary>
+    /// The direct &lt;data&gt; children of &lt;root&gt;, in document order.
+    /// </summary>
+    private static List<XmlElement> DataElements(XmlElement root)
+    {
+        return root.ChildNodes.OfType<XmlElement>().Where(e => e.Name == "data").ToList();
+    }
+
+    /// <summary>
+    /// The &lt;data&gt; child carrying this name attribute. Scanned rather than selected with an XPath predicate:
+    /// an entry name arrives from JSON the agent wrote, and a quote or bracket in it would change which nodes an
+    /// interpolated `data[@name='...']` matches.
+    /// </summary>
+    private static XmlElement? DataElement(XmlElement root, string name)
+    {
+        return DataElements(root).FirstOrDefault(e => e.GetAttribute("name") == name);
+    }
+
+    private static XmlElement? ChildElement(XmlElement parent, string name)
+    {
+        return parent.ChildNodes.OfType<XmlElement>().FirstOrDefault(e => e.Name == name);
+    }
+
     private sealed record Entry(string Name, string Value, string? Comment);
 
-    private sealed record SortKey(bool Known, string Primary, int Rank)
+    /// <summary>
+    /// Where an entry sorts: ID-mapped entries by ID value and first, unmapped ones by base name, and within one
+    /// diagnostic by Title -&gt; Message -&gt; Description.
+    /// </summary>
+    private sealed record SortKey(bool Known, string Primary, int Rank) : IComparable<SortKey>
     {
-        // ID-mapped entries sort by ID value and come first; unmapped ones sort by base name.
-        public static readonly IComparer<SortKey> Comparer = Comparer<SortKey>.Create((a, b) =>
+        public int CompareTo(SortKey? other)
         {
-            if (a.Known != b.Known)
+            if (other is null)
             {
-                return a.Known ? -1 : 1;
+                return 1;
             }
 
-            var c = string.CompareOrdinal(a.Primary, b.Primary);
-            return c != 0 ? c : a.Rank.CompareTo(b.Rank);
-        });
+            if (this.Known != other.Known)
+            {
+                return this.Known ? -1 : 1;
+            }
+
+            var c = string.CompareOrdinal(this.Primary, other.Primary);
+            return c != 0 ? c : this.Rank.CompareTo(other.Rank);
+        }
     }
 }

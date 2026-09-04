@@ -33,6 +33,9 @@ internal static partial class FindConventionsCommand
     [GeneratedRegex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase)]
     private static partial Regex DocDirName { get; }
 
+    /// <summary>How many markdown files mentioning a known ID are reported before the scan gives up.</summary>
+    private const int MentionFileLimit = 20;
+
     public static Command Create()
     {
         var path = new Option<string>("--path")
@@ -54,10 +57,29 @@ internal static partial class FindConventionsCommand
 
     private static int Run(string repoPath, bool summary)
     {
-        var root = Repo.GetRoot(repoPath);
+        var rootInfo = Repo.GetRoot(repoPath);
+        var root = rootInfo.Path;
+
         // Exclude any Claude Code plugin checked into the repository before scanning: this plugin's own
         // examples/ would otherwise be reported as the repository's diagnostics.
-        var vendoredPlugins = Repo.FindVendoredPlugins(root);
+        var scan = new RepoScan(root);
+
+        // Files that could not be read. A scan that silently skips one reports an incomplete repository as a
+        // complete one, which is indistinguishable from a repository that really has no diagnostics.
+        var readErrors = new List<string>();
+        string? ReadOrNull(string file)
+        {
+            try
+            {
+                return File.ReadAllText(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                readErrors.Add($"{scan.Rel(file)}: {ex.Message}");
+                return null;
+            }
+        }
+
         var config = new Config(root);
         if (config.Error is { } configError)
         {
@@ -80,7 +102,7 @@ internal static partial class FindConventionsCommand
 
         // Project data comes from MSBuild itself rather than from reading the XML: only a real evaluation knows
         // what custom .props/.targets, imported .projitems, central package management and conditions produce.
-        var csprojFiles = Repo.Files(root, "*.csproj").OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var csprojFiles = scan.Files(root, "*.csproj").OrderBy(p => p, StringComparer.Ordinal).ToList();
         var evaluations = MsBuild.EvaluateAll(csprojFiles);
 
         var projects = new List<ProjectInfo>();
@@ -101,7 +123,7 @@ internal static partial class FindConventionsCommand
 
             foreach (var i in ev.Items("ProjectReference"))
             {
-                projectRefs.Add(i.FullPath is { } fp ? Repo.Rel(root, fp) : i.Identity);
+                projectRefs.Add(i.FullPath is { } fp ? scan.Rel(fp) : i.Identity);
             }
 
             // A Compile item resolving outside the project directory is a linked file: the analyzer's IDs file
@@ -110,7 +132,7 @@ internal static partial class FindConventionsCommand
             {
                 if (i.FullPath is { } fp && !fp.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 {
-                    linked.Add(Repo.Rel(root, fp));
+                    linked.Add(scan.Rel(fp));
                 }
             }
 
@@ -142,9 +164,9 @@ internal static partial class FindConventionsCommand
             // AssemblyInfo.cs or a shared analyzer class may live in. Both halves are needed: a multi-targeting
             // project's outer build reports only explicitly written Compile items, not the SDK's default glob,
             // so evaluation alone would miss the project's own sources. Generated files under obj/ stay excluded.
-            var sourceFiles = Repo.Files(dir, "*.cs")
+            var sourceFiles = scan.Files(dir, "*.cs")
                 .Concat(ev.Items("Compile").Select(i => i.FullPath).OfType<string>()
-                    .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !Repo.IsExcluded(f) && File.Exists(f)))
+                    .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !scan.IsExcluded(f) && File.Exists(f)))
                 .Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
 
@@ -152,7 +174,12 @@ internal static partial class FindConventionsCommand
             var classes = new Dictionary<string, List<(string Class, string File)>>();
             foreach (var cs in sourceFiles.OrderBy(f => f, StringComparer.Ordinal))
             {
-                var source = CSharpSource.Parse(File.ReadAllText(cs));
+                if (ReadOrNull(cs) is not { } csText)
+                {
+                    continue;
+                }
+
+                var source = CSharpSource.Parse(csText);
                 neutralLanguage ??= source.AssemblyAttributeArgument("NeutralResourcesLanguage");
                 foreach (var (className, bases) in source.ClassesWithBaseTypes())
                 {
@@ -173,7 +200,7 @@ internal static partial class FindConventionsCommand
                             classes[role] = list = [];
                         }
 
-                        var entry = (className, Repo.Rel(root, cs));
+                        var entry = (className, scan.Rel(cs));
                         if (!list.Contains(entry))
                         {
                             list.Add(entry);
@@ -192,33 +219,39 @@ internal static partial class FindConventionsCommand
                 : packageRefs.Any(p => p.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal)) ? "roslyn-component"
                 : "other";
 
-            projects.Add(new ProjectInfo(
-                Path.GetFileNameWithoutExtension(csproj),
-                Repo.Rel(root, csproj),
-                Repo.Rel(root, dir),
-                dir,
-                kind,
-                roles,
-                classes,
-                packageRefs.ToList(),
-                projectRefs.ToList(),
-                linked.ToList(),
-                resxGenerators,
-                packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"),
-                neutralLanguage,
-                ev.Property("LangVersion"),
-                ev.Property("TargetFrameworks") ?? ev.Property("TargetFramework"),
-                ev.Error));
+            projects.Add(new ProjectInfo
+            {
+                Name = Path.GetFileNameWithoutExtension(csproj),
+                Path = scan.Rel(csproj),
+                Directory = scan.Rel(dir),
+                FullDirectory = dir,
+                Kind = kind,
+                Roles = roles,
+                Classes = classes,
+                PackageReferences = packageRefs.ToList(),
+                ProjectReferences = projectRefs.ToList(),
+                LinkedCompileFiles = linked.ToList(),
+                ResxGenerators = resxGenerators,
+                UsesResxSourceGenerator = packageRefs.Contains("Microsoft.CodeAnalysis.ResxSourceGenerator"),
+                NeutralLanguage = neutralLanguage,
+                LangVersion = ev.Property("LangVersion"),
+                TargetFrameworks = ev.Property("TargetFrameworks") ?? ev.Property("TargetFramework"),
+                EvaluationError = ev.Error,
+            });
         }
 
         // ---------------------------------------------------------------------------
         // ID files
         // ---------------------------------------------------------------------------
         var idFiles = new Dictionary<string, (List<IdConst> Ids, string? ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
-        var categoryFiles = new Dictionary<string, (string ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var cs in Repo.Files(root, "*.cs"))
+        var categoryFiles = new Dictionary<string, (string? ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cs in scan.Files(root, "*.cs"))
         {
-            var text = File.ReadAllText(cs);
+            if (ReadOrNull(cs) is not { } text)
+            {
+                continue;
+            }
+
             var ids = IdConst.Parse(text);
             var (cls, vis) = IdsFileText.ReadClass(text);
             var looksLikeIdsFile = ids.Count > 0 || (cls is not null && IdsClassName.IsMatch(cls));
@@ -234,17 +267,10 @@ internal static partial class FindConventionsCommand
             }
         }
 
-        // Diagnostic prefix: config wins; otherwise the most common letter group, ignoring groups that are
-        // another group + 'S' (those are suppressions); otherwise a prefix written in a band header.
+        // Diagnostic prefix: config wins; otherwise inferred from the IDs themselves; otherwise a prefix
+        // written in a band header.
         var prefix = config.Get("diagnosticPrefix");
-        if (prefix is null)
-        {
-            var groups = idFiles.Values.SelectMany(v => v.Ids).GroupBy(i => i.Letters).ToDictionary(g => g.Key, g => g.Count());
-            prefix = groups.Keys
-                .Where(k => !(k.EndsWith('S') && groups.ContainsKey(k[..^1])))
-                .OrderByDescending(k => groups[k]).ThenBy(k => k, StringComparer.Ordinal)
-                .FirstOrDefault();
-        }
+        prefix ??= IdConst.InferPrefix(idFiles.Values.SelectMany(v => v.Ids));
         prefix ??= idFiles.Values.Select(v => IdsFileText.ReadHeaderPrefix(v.Text)).FirstOrDefault(p => p is not null);
 
         JsonObject? DescribeIdsFile(bool suppression, string? configuredPath)
@@ -283,7 +309,11 @@ internal static partial class FindConventionsCommand
 
             if (!idFiles.TryGetValue(file, out var info))
             {
-                var text = File.ReadAllText(file);
+                if (ReadOrNull(file) is not { } text)
+                {
+                    return null;
+                }
+
                 var (cls, vis) = IdsFileText.ReadClass(text);
                 info = (IdConst.Parse(text), cls, vis, text);
             }
@@ -292,7 +322,7 @@ internal static partial class FindConventionsCommand
             var bands = IdsFileText.ReadBands(info.Text);
             return new JsonObject
             {
-                ["path"] = Repo.Rel(root, file),
+                ["path"] = scan.Rel(file),
                 ["className"] = info.ClassName,
                 ["visibility"] = info.Visibility,
                 ["prefix"] = prefix,
@@ -329,35 +359,84 @@ internal static partial class FindConventionsCommand
                     .ThenBy(k => k, StringComparer.Ordinal)
                     .First();
             }
+
             if (file is not null)
             {
-                if (!categoryFiles.TryGetValue(file, out var info))
+                // Only a configured path reaches this without having been read already; when it cannot be read,
+                // categoriesInfo stays null and the reason is in scanErrors.
+                if (!categoryFiles.TryGetValue(file, out var info) && ReadOrNull(file) is { } text)
                 {
-                    var text = File.ReadAllText(file);
                     var (cls, vis) = IdsFileText.ReadClass(text);
-                    info = (cls ?? "", vis, text);
-                }
-                var values = new JsonObject();
-                foreach (var constant in CSharpSource.Parse(info.Text).ConstStrings())
-                {
-                    values[constant.Name] = constant.Value;
+                    info = (cls, vis, text);
                 }
 
-                categoriesInfo = new JsonObject
+                if (info.Text is not null)
                 {
-                    ["path"] = Repo.Rel(root, file),
-                    ["className"] = info.ClassName,
-                    ["visibility"] = info.Visibility,
-                    ["values"] = values,
-                };
+                    var values = new JsonObject();
+                    foreach (var constant in CSharpSource.Parse(info.Text).ConstStrings())
+                    {
+                        values[constant.Name] = constant.Value;
+                    }
+
+                    categoriesInfo = new JsonObject
+                    {
+                        ["path"] = scan.Rel(file),
+                        ["className"] = info.ClassName,
+                        ["visibility"] = info.Visibility,
+                        ["values"] = values,
+                    };
+                }
             }
         }
 
         // ---------------------------------------------------------------------------
         // resx groups
         // ---------------------------------------------------------------------------
+        // Cached per project: several resx groups in one project would otherwise re-read and re-parse every .cs
+        // file in it once per group. The values are cached rather than the JSON, because a JsonNode belongs to
+        // one parent and two groups in the same project both need one.
+        var localizableByProject = new Dictionary<string, LocalizableConventions>(StringComparer.OrdinalIgnoreCase);
+        LocalizableConventions LocalizableOf(ProjectInfo owner)
+        {
+            if (localizableByProject.TryGetValue(owner.FullDirectory, out var cached))
+            {
+                return cached;
+            }
+
+            LocalizableStringMember? helper = null;
+            List<LocalizableStringMember>? members = null;
+            string? helperFile = null, membersFile = null;
+            foreach (var cs in scan.Files(owner.FullDirectory, "*.cs"))
+            {
+                if (helper is not null && members is not null)
+                {
+                    break;
+                }
+
+                if (ReadOrNull(cs) is not { } text)
+                {
+                    continue;
+                }
+
+                var source = CSharpSource.Parse(text);
+                if (helper is null && source.LocalizableStringHelper() is { } h)
+                {
+                    (helper, helperFile) = (h, scan.Rel(cs));
+                }
+
+                if (members is null && source.LocalizableStringMembers() is { Count: > 0 } m)
+                {
+                    (members, membersFile) = (m, scan.Rel(cs));
+                }
+            }
+
+            var result = new LocalizableConventions(helperFile, helper, membersFile, members);
+            localizableByProject[owner.FullDirectory] = result;
+            return result;
+        }
+
         var resxGroups = new JsonArray();
-        foreach (var g in Repo.Files(root, "*.resx")
+        foreach (var g in scan.Files(root, "*.resx")
                      .GroupBy(f => (Dir: Path.GetDirectoryName(f)!, Base: ResxName.Split(f).Base))
                      .OrderBy(g => g.Key.Dir + g.Key.Base, StringComparer.Ordinal))
         {
@@ -387,9 +466,9 @@ internal static partial class FindConventionsCommand
             }
 
             var resourceClass = g.Key.Base;
-            if (File.Exists(designer))
+            if (File.Exists(designer) && ReadOrNull(designer) is { } designerText)
             {
-                resourceClass = CSharpSource.Parse(File.ReadAllText(designer)).FirstClassName() ?? resourceClass;
+                resourceClass = CSharpSource.Parse(designerText).FirstClassName() ?? resourceClass;
             }
 
             // A hand-written helper such as `static LocalizableResourceString GetLocalizableResourceString(string name)`
@@ -399,53 +478,46 @@ internal static partial class FindConventionsCommand
             JsonObject? properties = null;
             if (owner is not null)
             {
-                foreach (var cs in Repo.Files(owner.FullDirectory, "*.cs"))
+                var localizable = LocalizableOf(owner);
+                if (localizable is { Helper: { } h, HelperFile: { } hf })
                 {
-                    if (helper is not null && properties is not null)
+                    helper = new JsonObject
                     {
-                        break;
-                    }
+                        ["class"] = string.Join('.', h.ContainingClasses),
+                        ["method"] = h.Name,
+                        ["accessibility"] = h.Accessibility,
+                        ["file"] = hf,
+                    };
+                }
 
-                    var source = CSharpSource.Parse(File.ReadAllText(cs));
-                    if (helper is null && source.LocalizableStringHelper() is { } h)
+                if (localizable is { Properties: { Count: > 0 } members, PropertiesFile: { } pf })
+                {
+                    var first = members[0];
+                    var nested = first.ContainingClasses.Count >= 2 ? first.ContainingClasses[^1] : null;
+                    var sm = LocalizableMemberName.Match(first.Name);
+                    var suffix = sm.Success ? sm.Groups["suffix"].Value : "";
+                    properties = new JsonObject
                     {
-                        helper = new JsonObject
-                        {
-                            ["class"] = string.Join('.', h.ContainingClasses),
-                            ["method"] = h.Name,
-                            ["accessibility"] = h.Accessibility,
-                            ["file"] = Repo.Rel(root, cs),
-                        };
-                    }
-                    if (properties is null && source.LocalizableStringMembers() is { Count: > 0 } members)
-                    {
-                        var first = members[0];
-                        var nested = first.ContainingClasses.Count >= 2 ? first.ContainingClasses[^1] : null;
-                        var sm = LocalizableMemberName.Match(first.Name);
-                        var suffix = sm.Success ? sm.Groups["suffix"].Value : "";
-                        properties = new JsonObject
-                        {
-                            ["file"] = Repo.Rel(root, cs),
-                            ["class"] = string.Join('.', first.ContainingClasses),
-                            ["style"] = nested is not null ? "nested" : suffix.Length > 0 ? "suffix" : "unknown",
-                            ["nestedClass"] = nested,
-                            ["suffix"] = suffix,
-                            ["accessibility"] = first.Accessibility,
-                            ["names"] = Json.Array(members.Select(m => m.Name)),
-                        };
-                    }
+                        ["file"] = pf,
+                        ["class"] = string.Join('.', first.ContainingClasses),
+                        ["style"] = nested is not null ? "nested" : suffix.Length > 0 ? "suffix" : "unknown",
+                        ["nestedClass"] = nested,
+                        ["suffix"] = suffix,
+                        ["accessibility"] = first.Accessibility,
+                        ["names"] = Json.Array(members.Select(m => m.Name)),
+                    };
                 }
             }
             var files = g.OrderBy(f => f, StringComparer.Ordinal).ToList();
             resxGroups.Add(new JsonObject
             {
                 ["baseName"] = g.Key.Base,
-                ["directory"] = Repo.Rel(root, dir),
+                ["directory"] = scan.Rel(dir),
                 ["project"] = owner?.Name,
-                ["files"] = Json.Array(files.Select(f => Repo.Rel(root, f))),
+                ["files"] = Json.Array(files.Select(scan.Rel)),
                 ["cultures"] = Json.Array(files.Select(f => ResxName.Split(f).Culture).OrderBy(c => c, StringComparer.Ordinal)),
                 ["baseFileExists"] = File.Exists(baseFile),
-                ["designerFile"] = File.Exists(designer) ? Repo.Rel(root, designer) : null,
+                ["designerFile"] = File.Exists(designer) ? scan.Rel(designer) : null,
                 ["generator"] = generator,
                 ["resourceClass"] = resourceClass,
                 // Language of the neutral file, from <NeutralLanguage> or NeutralResourcesLanguageAttribute.
@@ -470,8 +542,8 @@ internal static partial class FindConventionsCommand
                 releases.Add(new JsonObject
                 {
                     ["project"] = p.Name,
-                    ["shipped"] = File.Exists(shipped) ? Repo.Rel(root, shipped) : null,
-                    ["unshipped"] = File.Exists(unshipped) ? Repo.Rel(root, unshipped) : null,
+                    ["shipped"] = File.Exists(shipped) ? scan.Rel(shipped) : null,
+                    ["unshipped"] = File.Exists(unshipped) ? scan.Rel(unshipped) : null,
                     ["expectedDirectory"] = p.Directory,
                     // Whether the release-tracking analyzer (RS2000-RS2008) is reachable at all. Both values are
                     // weak: the package flows transitively from Microsoft.CodeAnalysis.*, and the SDK registers the
@@ -496,7 +568,7 @@ internal static partial class FindConventionsCommand
         var ruleDocRegex = new Regex($@"^{letters}\d{{3,5}}([-_. ].*)?\.md$", docCase);
         var suppDocRegex = new Regex($@"^{letters}S\d{{3,5}}([-_. ].*)?\.md$", docCase);
 
-        var allMarkdown = Repo.Files(root, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
+        var allMarkdown = scan.Files(root, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
 
         string? docsDir = null;
         if (config.Get("docsDir") is { } cfgDocs && Directory.Exists(Path.Combine(root, cfgDocs)))
@@ -512,10 +584,10 @@ internal static partial class FindConventionsCommand
                 .Select(g => g.Key).FirstOrDefault();
         }
 
-        var candidateDirs = Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
-            .Where(d => !Repo.IsExcluded(d) && DocDirName.IsMatch(Path.GetFileName(d)))
+        var candidateDirs = scan.Directories(root)
+            .Where(d => !d.Equals(root, StringComparison.OrdinalIgnoreCase) && DocDirName.IsMatch(Path.GetFileName(d)))
             .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
-            .Select(d => Repo.Rel(root, d))
+            .Select(scan.Rel)
             .ToList();
 
         // Markdown that mentions an existing diagnostic ID (a single page listing every rule, a README table).
@@ -524,6 +596,7 @@ internal static partial class FindConventionsCommand
             .SelectMany(o => o!["ids"]!.AsArray().Select(i => i!["value"]!.ToString()))
             .Distinct(StringComparer.Ordinal).ToList();
         var mentionFiles = new List<string>();
+        var mentionFilesTruncated = false;
         if (knownIds.Count > 0)
         {
             var mentionRegex = new Regex(@"(^|[\s|(\[#`])(" + string.Join('|', knownIds.Select(Regex.Escape)) + @")([\s|)\].,:`]|$)", RegexOptions.Multiline);
@@ -540,32 +613,42 @@ internal static partial class FindConventionsCommand
                     continue;
                 }
 
-                try
+                if (Length(f) > 512 * 1024)
                 {
-                    if (new FileInfo(f).Length > 512 * 1024)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if (mentionRegex.IsMatch(File.ReadAllText(f)))
-                    {
-                        mentionFiles.Add(Repo.Rel(root, f));
-                    }
-                }
-                catch
+                if (ReadOrNull(f) is { } md && mentionRegex.IsMatch(md))
                 {
+                    mentionFiles.Add(scan.Rel(f));
                 }
-                if (mentionFiles.Count >= 20)
+
+                if (mentionFiles.Count >= MentionFileLimit)
                 {
+                    // Reported: the remaining files were never looked at, so the list is a sample, not the set.
+                    mentionFilesTruncated = true;
                     break;
                 }
+            }
+        }
+
+        long Length(string file)
+        {
+            try
+            {
+                return new FileInfo(file).Length;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                readErrors.Add($"{scan.Rel(file)}: {ex.Message}");
+                return long.MaxValue;
             }
         }
 
         // Where a new page should go when nothing exists yet: under the shallowest documentation-ish directory,
         // else the conventional docs/rules.
         var suggested = docsDir is not null
-            ? Repo.Rel(root, docsDir)
+            ? scan.Rel(docsDir)
             : candidateDirs.Count > 0
                 ? (DocDirName.IsMatch(Path.GetFileName(candidateDirs[0])) && Path.GetFileName(candidateDirs[0]).Equals("rules", StringComparison.OrdinalIgnoreCase)
                     ? candidateDirs[0]
@@ -580,24 +663,25 @@ internal static partial class FindConventionsCommand
             ["suppressionDocs"] = new JsonArray(),
             ["candidateDirectories"] = Json.Array(candidateDirs),
             ["mentionFiles"] = Json.Array(mentionFiles),
+            ["mentionFilesTruncated"] = mentionFilesTruncated,
             ["suggestedDirectory"] = suggested,
         };
 
         if (docsDir is not null)
         {
-            docs["directory"] = Repo.Rel(root, docsDir);
+            docs["directory"] = scan.Rel(docsDir);
             foreach (var idx in new[] { config.Get("docsIndexFile"), "README.md", "index.md", "Index.md" })
             {
                 if (idx is not null && File.Exists(Path.Combine(docsDir, idx)))
                 {
-                    docs["indexFile"] = Repo.Rel(root, Path.Combine(docsDir, idx));
+                    docs["indexFile"] = scan.Rel(Path.Combine(docsDir, idx));
                     break;
                 }
             }
 
-            var mds = Directory.EnumerateFiles(docsDir, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
-            docs["ruleDocs"] = Json.Array(mds.Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f))).Select(f => Repo.Rel(root, f)));
-            docs["suppressionDocs"] = Json.Array(mds.Where(f => suppDocRegex.IsMatch(Path.GetFileName(f))).Select(f => Repo.Rel(root, f)));
+            var mds = scan.FilesIn(docsDir, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
+            docs["ruleDocs"] = Json.Array(mds.Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
+            docs["suppressionDocs"] = Json.Array(mds.Where(f => suppDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
         }
 
         // ---------------------------------------------------------------------------
@@ -607,9 +691,9 @@ internal static partial class FindConventionsCommand
         var gitJson = new JsonObject
         {
             ["remote"] = git.Remote,
-            ["host"] = git.Host,
-            ["owner"] = git.Owner,
-            ["repo"] = git.RepoName,
+            ["host"] = git.Repository?.Host,
+            ["owner"] = git.Repository?.Owner,
+            ["repo"] = git.Repository?.Name,
             ["defaultBranch"] = git.DefaultBranch,
             ["docUrlTemplate"] = config.Get("docUrlTemplate") ?? git.DefaultTemplate,
         };
@@ -617,7 +701,6 @@ internal static partial class FindConventionsCommand
         // ---------------------------------------------------------------------------
         // ID sharing
         // ---------------------------------------------------------------------------
-        var sharing = config.Get("idSharing") ?? "none";
         ProjectInfo? idsProject = null;
         if (diagIds is not null)
         {
@@ -626,73 +709,20 @@ internal static partial class FindConventionsCommand
                 .Where(p => idsDir.StartsWith(p.FullDirectory.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(p => p.FullDirectory.Length).FirstOrDefault();
         }
-        // The values name *where the IDs live* and how a consumer reaches them, deliberately avoiding MSBuild
-        // item names since three of the four can be built out of <ProjectReference> items:
-        //
-        //                      | IDs in the analyzer project | IDs outside it
-        //   -------------------+-----------------------------+---------------------------------
-        //   reached by a       | AnalyzerProject             | SharedProject (a third project
-        //   project reference  |                             | both sides reference)
-        //   reached by a       | LinkedFile                  | SharedFile (a file owned by no
-        //   linked <Compile>   |                             | project, compiled by each side;
-        //                      |                             | a VS .shproj lands here, since it
-        //                      |                             | produces no assembly of its own)
-        if (sharing == "none")
-        {
-            var codeFixes = projects.Where(p => p.Kind == "codefix").ToList();
-            var producers = projects.Where(p => p.Kind is "analyzer" or "generator").ToList();
-            var analyzerPaths = producers.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var idsFileName = diagIds is not null ? Path.GetFileName(diagIds["path"]!.ToString()) : null;
-            bool LinksIdsFile(ProjectInfo p)
-            {
-                return idsFileName is not null &&
-                       p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
-            }
 
-            // The IDs file lives in a separate project that analyzers and code fixes both reference.
-            if (idsProject is not null && idsProject.Kind is not ("analyzer" or "generator") && codeFixes.Count > 0
-                && codeFixes.All(cf => cf.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase))
-                && producers.Any(p => p.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase)))
-            {
-                sharing = "SharedProject";
-            }
-
-            // The IDs file sits under no project at all and each side links it.
-            if (sharing == "none" && idsProject is null && projects.Any(LinksIdsFile))
-            {
-                sharing = "SharedFile";
-            }
-
-            foreach (var cf in codeFixes)
-            {
-                if (sharing != "none")
-                {
-                    break;
-                }
-
-                // The code fix references the analyzer project that owns the IDs file.
-                if (cf.ProjectReferences.Any(analyzerPaths.Contains))
-                {
-                    sharing = "AnalyzerProject";
-                    break;
-                }
-
-                // The code fix compiles the analyzer project's IDs file through a linked Compile item.
-                if (LinksIdsFile(cf))
-                {
-                    sharing = "LinkedFile";
-                    break;
-                }
-            }
-        }
+        var configuredSharing = config.Get("idSharing");
+        var sharing = configuredSharing ?? DetectIdSharing(
+            projects, idsProject, diagIds is not null ? Path.GetFileName(diagIds["path"]!.ToString()) : null);
 
         // ---------------------------------------------------------------------------
         // Output
         // ---------------------------------------------------------------------------
         // --summary keeps only what the workflow reads: the projects a diagnostic can be added to, without the
-        // reference lists that only fed kind detection and idSharing (both already computed above).
+        // reference lists that only fed kind detection and idSharing (both already computed above). A project
+        // MSBuild could not evaluate is kept whatever its kind, since "other" is then only a guess.
         var reported = summary
-            ? projects.Where(p => p.Kind is "analyzer" or "generator" or "codefix" or "roslyn-component").ToList()
+            ? projects.Where(p => p.Kind is "analyzer" or "generator" or "codefix" or "roslyn-component"
+                || p.EvaluationError is not null).ToList()
             : projects;
         var reportedNames = reported.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (summary)
@@ -720,8 +750,14 @@ internal static partial class FindConventionsCommand
         Json.Print(new JsonObject
         {
             ["root"] = root.Replace('\\', '/'),
+            // False when nothing identified a repository and --path was used as the root: every path below is
+            // relative to it, so a subdirectory standing in for the root looks like a nearly empty repository.
+            ["rootDetected"] = rootInfo.Detected,
+            ["rootError"] = rootInfo.Error,
+            // Directories and files the scan could not read. Anything missing below may be missing for this reason.
+            ["scanErrors"] = Json.Array(scan.Errors.Concat(readErrors)),
             // Plugin trees skipped during the scan; their sample files are documentation, not this repository's code.
-            ["excludedPluginDirectories"] = Json.Array(vendoredPlugins.Select(p => Repo.Rel(root, p))),
+            ["excludedPluginDirectories"] = Json.Array(scan.VendoredPlugins.Select(scan.Rel)),
             ["config"] = new JsonObject { ["path"] = Config.RelativePath, ["exists"] = config.Exists, ["values"] = config.ToJson(), ["notes"] = config.Body },
             ["diagnosticPrefix"] = prefix,
             ["projects"] = projectsJson,
@@ -729,6 +765,9 @@ internal static partial class FindConventionsCommand
             ["suppressionIds"] = suppIds,
             ["diagnosticCategories"] = categoriesInfo,
             ["idSharing"] = sharing,
+            // False when idSharing was detected from project data that MSBuild could not fully evaluate: the
+            // references and linked files detection reads come from evaluation, so "none" may only mean "unknown".
+            ["idSharingReliable"] = configuredSharing is not null || projects.All(p => p.EvaluationError is null),
             ["diagnosticIdsProject"] = idsProject?.Name,
             ["resx"] = resxGroups,
             ["analyzerReleases"] = releases,
@@ -738,46 +777,75 @@ internal static partial class FindConventionsCommand
         return 0;
     }
 
-    private sealed record ProjectInfo(
-        string Name, string Path, string Directory, string FullDirectory, string Kind, List<string> Roles,
-        Dictionary<string, List<(string Class, string File)>> Classes, List<string> PackageReferences, List<string> ProjectReferences,
-        List<string> LinkedCompileFiles, Dictionary<string, string> ResxGenerators, bool UsesResxSourceGenerator,
-        string? NeutralLanguage, string? LangVersion, string? TargetFrameworks, string? EvaluationError)
+    /// <summary>
+    /// How a code-fix project reaches the diagnostic IDs. The values name *where the IDs live* and how a consumer
+    /// reaches them, deliberately avoiding MSBuild item names since three of the four can be built out of
+    /// &lt;ProjectReference&gt; items:
+    ///
+    /// <code>
+    ///                      | IDs in the analyzer project | IDs outside it
+    ///   -------------------+-----------------------------+---------------------------------
+    ///   reached by a       | AnalyzerProject             | SharedProject (a third project
+    ///   project reference  |                             | both sides reference)
+    ///   reached by a       | LinkedFile                  | SharedFile (a file owned by no
+    ///   linked &lt;Compile&gt;   |                             | project, compiled by each side;
+    ///                      |                             | a VS .shproj lands here, since it
+    ///                      |                             | produces no assembly of its own)
+    /// </code>
+    ///
+    /// "none" means no route was found, which for a repository whose projects all evaluated means there is none.
+    /// </summary>
+    internal static string DetectIdSharing(IReadOnlyList<ProjectInfo> projects, ProjectInfo? idsProject, string? idsFileName)
     {
-        public JsonObject ToJson()
+        var codeFixes = projects.Where(p => p.Kind == "codefix").ToList();
+        var producers = projects.Where(p => p.Kind is "analyzer" or "generator").ToList();
+        var analyzerPaths = producers.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        bool LinksIdsFile(ProjectInfo p)
         {
-            var classes = new JsonObject();
-            foreach (var (role, list) in this.Classes)
-            {
-                classes[role] = Json.Array(list.Select(c => (JsonNode?)new JsonObject { ["class"] = c.Class, ["file"] = c.File }));
-            }
-
-            var gens = new JsonObject();
-            foreach (var (k, v) in this.ResxGenerators)
-            {
-                gens[k] = v;
-            }
-
-            return new JsonObject
-            {
-                ["name"] = this.Name,
-                ["path"] = this.Path,
-                ["directory"] = this.Directory,
-                ["kind"] = this.Kind,
-                ["roles"] = Json.Array(this.Roles),
-                ["classes"] = classes,
-                ["packageReferences"] = Json.Array(this.PackageReferences),
-                ["projectReferences"] = Json.Array(this.ProjectReferences),
-                ["linkedCompileFiles"] = Json.Array(this.LinkedCompileFiles),
-                ["resxGenerators"] = gens,
-                ["usesResxSourceGenerator"] = this.UsesResxSourceGenerator,
-                ["neutralLanguage"] = this.NeutralLanguage,
-                ["langVersion"] = this.LangVersion,
-                ["targetFrameworks"] = this.TargetFrameworks,
-                // Non-null when MSBuild could not evaluate the project: every field above is then a guess
-                // based on source files alone. Report it rather than treating the project as empty.
-                ["evaluationError"] = this.EvaluationError,
-            };
+            return idsFileName is not null &&
+                   p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
         }
+
+        // The IDs file lives in a separate project that analyzers and code fixes both reference.
+        if (idsProject is not null && idsProject.Kind is not ("analyzer" or "generator") && codeFixes.Count > 0
+            && codeFixes.All(cf => cf.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase))
+            && producers.Any(p => p.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase)))
+        {
+            return "SharedProject";
+        }
+
+        // The IDs file sits under no project at all and each side links it.
+        if (idsProject is null && projects.Any(LinksIdsFile))
+        {
+            return "SharedFile";
+        }
+
+        foreach (var cf in codeFixes)
+        {
+            // The code fix references the analyzer project that owns the IDs file.
+            if (cf.ProjectReferences.Any(analyzerPaths.Contains))
+            {
+                return "AnalyzerProject";
+            }
+
+            // The code fix compiles the analyzer project's IDs file through a linked Compile item.
+            if (LinksIdsFile(cf))
+            {
+                return "LinkedFile";
+            }
+        }
+
+        return "none";
     }
+
+    /// <summary>
+    /// A project's localizable-resource conventions, as read from its source once. The file paths are
+    /// repository-relative, and are non-null exactly when the value beside them is.
+    /// </summary>
+    private sealed record LocalizableConventions(
+        string? HelperFile,
+        LocalizableStringMember? Helper,
+        string? PropertiesFile,
+        List<LocalizableStringMember>? Properties);
 }

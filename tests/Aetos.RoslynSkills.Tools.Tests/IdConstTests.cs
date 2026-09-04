@@ -62,6 +62,76 @@ public sealed class IdConstTests
     }
 
     /// <summary>
+    /// Guarantees the prefix is inferred from the letters most of the IDs share, so a repository that has vendored or
+    /// copied a stray ID of another prefix is not renamed after it.
+    /// </summary>
+    [TestMethod]
+    public void ThePrefixIsTheLettersMostIdsShare()
+    {
+        var ids = IdConst.Parse(
+            """
+            internal static class DiagnosticIds
+            {
+                public const string First = "CTS1001";
+                public const string Second = "CTS1002";
+                public const string Borrowed = "RS1001";
+            }
+            """);
+
+        Assert.AreEqual("CTS", IdConst.InferPrefix(ids));
+    }
+
+    /// <summary>
+    /// Guarantees the suppression letters are not inferred as the prefix when the diagnostics they suppress are there
+    /// too: CTSS is CTS plus the suppression S, and inferring it would make every later ID a CTSS one.
+    /// </summary>
+    [TestMethod]
+    public void TheSuppressionLettersAreNotTakenForThePrefix()
+    {
+        var ids = IdConst.Parse(
+            """
+            internal static class Ids
+            {
+                public const string DisposableField = "CTS1001";
+                public const string SuppressA = "CTSS0001";
+                public const string SuppressB = "CTSS0002";
+                public const string SuppressC = "CTSS0003";
+            }
+            """);
+
+        Assert.AreEqual("CTS", IdConst.InferPrefix(ids), "the suppressions outnumber the diagnostics and still lose");
+    }
+
+    /// <summary>
+    /// Guarantees a tie is broken by the alphabet rather than by the order the files happened to be scanned in, so
+    /// two runs over the same repository infer the same prefix.
+    /// </summary>
+    [TestMethod]
+    public void ATieIsBrokenByTheAlphabetSoTheAnswerIsStable()
+    {
+        var ids = IdConst.Parse(
+            """
+            internal static class DiagnosticIds
+            {
+                public const string Zzz = "ZZZ1001";
+                public const string Abc = "ABC1001";
+            }
+            """);
+
+        Assert.AreEqual("ABC", IdConst.InferPrefix(ids));
+    }
+
+    /// <summary>
+    /// Guarantees nothing is inferred from no IDs, since the caller has to ask for a prefix rather than be handed an
+    /// invented one that then appears in every ID the repository ships.
+    /// </summary>
+    [TestMethod]
+    public void NoIdsMeansNoPrefix()
+    {
+        Assert.IsNull(IdConst.InferPrefix([]));
+    }
+
+    /// <summary>
     /// Guarantees constants that merely look similar are left alone, so a category name or a version string
     /// is never counted as a diagnostic ID and the next ID is not computed from it.
     /// </summary>

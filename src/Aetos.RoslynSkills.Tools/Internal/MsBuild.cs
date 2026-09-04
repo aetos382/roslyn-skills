@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
@@ -111,18 +112,23 @@ internal static class MsBuild
         args.AddRange(Properties.Select(p => "-getProperty:" + p));
         args.AddRange(Items.Select(i => "-getItem:" + i));
 
-        var (exit, stdout, stderr) = Shell.Exec("dotnet", args);
-        if (exit != 0)
+        var result = Shell.Exec("dotnet", args);
+        if (result.Failure is { } failure)
         {
-            var message = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+            return Evaluation.Failed(failure);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            var message = string.IsNullOrWhiteSpace(result.StdErr) ? result.StdOut : result.StdErr;
             return Evaluation.Failed(FirstLines(message, 3));
         }
 
         try
         {
-            return Evaluation.Parse(stdout);
+            return Evaluation.Parse(result.StdOut);
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
             return Evaluation.Failed(ex.Message);
         }

@@ -79,8 +79,11 @@ repository is refused rather than pasted into the URL.
 Resolution order for the template: `--template` argument → `docUrlTemplate` in
 `.claude/roslyn-skills/add-diagnostic.md`
 → `https://github.com/{owner}/{repo}/blob/{branch}/{path}` when `origin` points at github.com. Owner and
-repo come from the `origin` remote; branch from `origin/HEAD`, then `gh repo view`, then the current
-branch. The command fails when the host is not GitHub and no template is configured; in that case ask the
+repo come from the `origin` remote; the branch is the remote's default branch, read from `origin/HEAD` and
+then from `gh repo view`. The checked out branch is deliberately not a fallback: a help link built from it
+dies with the branch, so a `{branch}` that cannot be resolved is reported as a failure instead (set it with
+`git remote set-head origin --auto`).
+The command fails when the host is not GitHub and no template is configured; in that case ask the
 user for the template (GitLab: `https://gitlab.com/{owner}/{repo}/-/blob/{branch}/{path}`, Azure DevOps and
 others vary) and store it in the config file.
 

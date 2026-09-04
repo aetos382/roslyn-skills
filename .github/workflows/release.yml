@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to pack (e.g. 1.2.3).'
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Build the release
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Validate version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version '$VERSION'. Expected a format like 1.2.3 or 1.2.3-preview.1"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # SKILL.md names the version of the tool the agent runs, so a release whose pins name anything else
+      # would ship skills that invoke a package this run never built. A tree with no pin at all fails too,
+      # otherwise deleting the pins would quietly disable the check.
+      - name: Check the skill's version pins
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          pins=$(grep -rn 'Aetos\.RoslynSkills\.Tools@' plugin || true)
+          if [ -z "$pins" ]; then
+            echo "::error::no Aetos.RoslynSkills.Tools@<version> pin found under plugin/"
+            exit 1
+          fi
+          if echo "$pins" | grep -vF "Aetos.RoslynSkills.Tools@$VERSION"; then
+            echo "::error::the lines above pin a version other than $VERSION"
+            exit 1
+          fi
+
+      # The SDK comes from global.json, which pins a version with rollForward disabled; a floating
+      # dotnet-version would install a patch that pin then rejects.
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Test
+        run: >-
+          dotnet test RoslynSkills.slnx
+          --configuration Release
+          -p:RestoreLockedMode=true
+
+      - name: Pack
+        env:
+          VERSION: ${{ inputs.version }}
+        run: >-
+          dotnet pack src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj
+          --configuration Release
+          --output artifacts
+          --version "$VERSION"
+          -p:RestoreLockedMode=true
+          -bl:artifacts/pack.binlog
+
+      # A version on NuGet.org can never be replaced, so the package that gets pushed is the one exercised
+      # here rather than a rebuild of it.
+      - name: Run the packed tool
+        env:
+          VERSION: ${{ inputs.version }}
+        run: >-
+          dotnet tool exec --source ./artifacts "Aetos.RoslynSkills.Tools@$VERSION"
+          -- add-diagnostic find-conventions --path . --summary > /dev/null
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package
+          path: artifacts/*nupkg
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload binlog artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binlog
+          path: artifacts/pack.binlog
+          archive: false
+          if-no-files-found: error
+
+      - name: Push to GitHub Packages
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --source https://nuget.pkg.github.com/aetos382/index.json
+          --api-key "$NUGET_API_KEY"
+
+      # The release is left as a draft on purpose: publishing it by hand is the gate in front of the
+      # irreversible push to NuGet.org that publish.yml then performs on the assets attached here.
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: >-
+          gh release create "v$VERSION"
+          artifacts/*nupkg
+          --draft
+          --title "v$VERSION"
+          --generate-notes

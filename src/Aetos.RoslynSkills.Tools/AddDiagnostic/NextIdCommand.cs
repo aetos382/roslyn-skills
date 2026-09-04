@@ -64,10 +64,20 @@ internal static class NextIdCommand
 
     private static int Run(string idsFile, string? prefix, string? category, int? band, int? digits, bool suppression)
     {
-        var text = File.Exists(idsFile) ? File.ReadAllText(idsFile) : "";
+        // A missing file is only legitimate when the caller says which prefix to start from: step 5a of the skill
+        // creates the file, so step 4 has to be able to allocate the very first ID before it exists. Without
+        // --prefix, a mistyped path is indistinguishable from an empty file and would silently restart at 0001.
+        var idsFileExists = File.Exists(idsFile);
+        if (!idsFileExists && prefix is null)
+        {
+            return Json.Fail($"IDs file not found: {idsFile}",
+                "Check the path. To allocate the first ID of a file that does not exist yet, pass --prefix <PREFIX> (and --band <n> for a diagnostic) explicitly.");
+        }
+
+        var text = idsFileExists ? File.ReadAllText(idsFile) : "";
         var all = IdConst.Parse(text);
 
-        var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!));
+        var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!).Path);
         if (cfg.Error is { } cfgError)
         {
             return Json.Fail(cfgError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
@@ -75,10 +85,9 @@ internal static class NextIdCommand
 
         // Prefix: explicit, else config, else inferred from existing IDs, else from band headers (`// Design (ABC1xxx)`).
         prefix ??= cfg.Get("diagnosticPrefix");
-        if (prefix is null && all.Count > 0)
+        if (prefix is null && IdConst.InferPrefix(all) is { } letters)
         {
-            var letters = all.GroupBy(i => i.Letters).OrderByDescending(g => g.Count()).First().Key;
-            prefix = suppression && letters.EndsWith('S') ? letters[..^1] : letters;
+            prefix = suppression && IsSuppressionGroup(all, letters, idsFile) ? letters[..^1] : letters;
         }
         prefix ??= IdsFileText.ReadHeaderPrefix(text);
         if (prefix is null)
@@ -128,8 +137,7 @@ internal static class NextIdCommand
             next = mine.Count > 0 ? mine.Max(i => i.Number) + 1 : 1;
         }
 
-        var infix = suppression ? "S" : "";
-        var value = $"{prefix}{infix}{next.ToString().PadLeft(idDigits, '0')}";
+        var value = IdConst.Format(suppression ? prefix + "S" : prefix, next, idDigits);
         if (mine.Any(i => i.Number == next))
         {
             return Json.Fail($"Computed ID {value} already exists.", "Re-run after checking the IDs file.");
@@ -144,6 +152,8 @@ internal static class NextIdCommand
         Json.Print(new JsonObject
         {
             ["id"] = value,
+            // False means the number below is the first of a file step 5a still has to create.
+            ["idsFileExists"] = idsFileExists,
             ["prefix"] = prefix,
             ["number"] = next,
             ["digits"] = idDigits,
@@ -155,5 +165,27 @@ internal static class NextIdCommand
             ["unresolvedCategory"] = category is not null && band is null && !suppression,
         });
         return 0;
+    }
+
+    /// <summary>
+    /// Whether the inferred letters are existing suppressions rather than the prefix itself. A suppression ID
+    /// carries one extra S, so `CTSS` in a file of nothing but `CTSS0001` means the prefix is `CTS` — but a
+    /// repository whose prefix is `RS` writes `RS1001`, and stripping there would allocate `RS0001` into the
+    /// diagnostics' own numbering. The numbers say nothing about which case it is, so the evidence is the
+    /// diagnostic group being present alongside, or failing that the file being the suppressions file.
+    /// </summary>
+    private static bool IsSuppressionGroup(IEnumerable<IdConst> ids, string letters, string idsFile)
+    {
+        if (!letters.EndsWith('S'))
+        {
+            return false;
+        }
+
+        if (ids.Any(i => i.Letters == letters + "S"))
+        {
+            return false;
+        }
+
+        return Path.GetFileNameWithoutExtension(idsFile).Contains("Suppress", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -126,7 +126,11 @@ See `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/Dia
 - Name: PascalCase statement of what is **allowed**, from the point of view of the suppressed rule:
   `TestClassesMayBePublic`, `EventHandlersMayBeUnused`, `GeneratedCodeMayOmitDocumentation`.
   `May` reads naturally for suppressions.
-- File: `SuppressionIds.cs`, separate from `DiagnosticIds.cs`, same namespace and visibility.
+- File: `SuppressionIds.cs`, separate from `DiagnosticIds.cs`, same namespace and visibility. The file name
+  is also the evidence `next-id --suppression` uses when the file holds nothing but suppressions: `CTSS0001`
+  alone could be the suppressions of prefix `CTS` or the diagnostics of a repository whose prefix is `CTSS`,
+  and the numbers cannot tell those apart. A name containing `Suppress` settles it; otherwise pass
+  `--prefix` and the guess is not made at all.
 - Only one resource: `{Name}Justification`.
 
 ## Sharing IDs between the analyzer and code-fix projects

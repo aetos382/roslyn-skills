@@ -99,8 +99,19 @@ Every key is optional. See `plugin/skills/add-diagnostic/examples/add-diagnostic
 roslyn-skills/
 ├── .claude-plugin/
 │   └── marketplace.json       # makes this repository installable as a marketplace
-├── global.json                # selects the MTP runner for dotnet test; pins no SDK
-├── Directory.Build.props      # target framework and lock-file settings shared by both projects
+├── .github/
+│   ├── dependabot.yml         # NuGet and Actions updates, grouped
+│   └── workflows/
+│       ├── ci.yml             # validates the plugin, then tests and packs
+│       ├── release.yml        # packs one version and drafts its GitHub release
+│       └── publish.yml        # pushes that release's assets to NuGet.org
+├── RoslynSkills.slnx          # the tool and its tests
+├── global.json                # pins the SDK with rollForward disabled, pins MSTest.Sdk, selects the MTP runner
+├── Directory.Build.props      # language, analysis and artifacts settings shared by both projects
+├── Directory.Build.targets    # package metadata, and locked restore on CI
+├── Directory.Packages.props   # every package version, centrally
+├── NuGet.config               # nuget.org alone, with source mapping
+├── LICENSE
 ├── README.md                  # also the NuGet package's readme
 ├── plugin/                    # what an install delivers, and nothing else
 │   ├── .claude-plugin/

@@ -57,12 +57,12 @@ dotnet_diagnostic.IDE0305.severity = none
 
 dotnet_naming_symbols.types_and_namespaces.applicable_kinds = class, struct, enum, delegate, namespace
 
-dotnet_naming_symbols.interfaces.applicable_kinds = interfaces
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
 
 dotnet_naming_symbols.type_parameters.applicable_kinds = type_parameter
 
-dotnet_naming_symbols.members.applicable_kinds = method, property, event, field, local_function
-dotnet_naming_symbols.members.applicable_accessibilities = public, internal, protected, protected_internal, private_protected, file, local
+dotnet_naming_symbols.non_private_members.applicable_kinds = method, property, event, field, local_function
+dotnet_naming_symbols.non_private_members.applicable_accessibilities = public, internal, protected, protected_internal, private_protected, file, local
 
 dotnet_naming_symbols.parameters_and_local_variables.applicable_kinds = parameter, local
 
@@ -106,9 +106,9 @@ dotnet_naming_rule.type_parameters_should_be_pascal_case_starting_with_large_t.s
 dotnet_naming_rule.type_parameters_should_be_pascal_case_starting_with_large_t.severity = warning
 
 # プライベートでないメンバーは PascalCase
-dotnet_naming_rule.members.symbols = non_private_members
-dotnet_naming_rule.members.style = pascal_case
-dotnet_naming_rule.members.severity = warning
+dotnet_naming_rule.non_private_members_should_be_pascal_case.symbols = non_private_members
+dotnet_naming_rule.non_private_members_should_be_pascal_case.style = pascal_case
+dotnet_naming_rule.non_private_members_should_be_pascal_case.severity = warning
 
 # パラメーターとローカル変数は camelCase
 dotnet_naming_rule.parameters_and_local_variables_should_be_camel_case.symbols = parameters_and_local_variables

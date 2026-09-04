@@ -22,32 +22,47 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
 
     private static (int ExitCode, string Output) Run(params string[] args)
     {
-        var original = Console.Out;
-        using var buffer = new StringWriter();
-        Console.SetOut(buffer);
-        try
+        return Tool.Run(args);
+    }
+
+    /// <summary>
+    /// Guarantees every command line the skill's documents show can actually be typed: the subcommand exists and
+    /// so does each option passed to it. Read out of the Markdown rather than restated here, because a rename in
+    /// the tool otherwise leaves the documents telling the agent to run a command that no longer exists.
+    /// </summary>
+    [TestMethod]
+    public void EveryCommandLineTheDocumentsShowIsOneTheToolAccepts()
+    {
+        var group = Program.CreateRootCommand().Subcommands.Single(c => c.Name == "add-diagnostic");
+        var invocations = PluginSkill.Invocations().ToList();
+
+        Assert.IsNotEmpty(invocations, "no command lines were found in the skill's documents");
+        foreach (var (name, options, file) in invocations)
         {
-            return (Program.Main(args), buffer.ToString());
-        }
-        finally
-        {
-            Console.SetOut(original);
+            var command = group.Subcommands.SingleOrDefault(c => c.Name == name);
+            Assert.IsNotNull(command, $"{file} runs 'add-diagnostic {name}', which the tool does not have");
+
+            var known = command.Options.SelectMany(o => o.Aliases.Append(o.Name)).ToHashSet(StringComparer.Ordinal);
+            foreach (var option in options)
+            {
+                Assert.Contains(option, known, $"{file} passes {option} to '{name}', which does not take it");
+            }
         }
     }
 
     /// <summary>
-    /// Guarantees the command path SKILL.md invokes — the skill's own group plus its four subcommands — is the
-    /// one the tool actually exposes: a rename on either side leaves the skill running a command that does not exist.
+    /// Guarantees the other direction too: a subcommand no document shows is one the skill cannot reach, so it is
+    /// either undocumented or dead.
     /// </summary>
     [TestMethod]
-    public void EverySubcommandTheSkillInvokesExists()
+    public void EverySubcommandTheToolExposesIsDocumented()
     {
-        var groups = Program.CreateRootCommand().Subcommands;
+        var group = Program.CreateRootCommand().Subcommands.Single(c => c.Name == "add-diagnostic");
+        var documented = PluginSkill.Invocations().Select(i => i.Command).ToHashSet(StringComparer.Ordinal);
 
-        Assert.AreSequenceEqual(["add-diagnostic"], groups.Select(c => c.Name).ToArray(), SequenceOrder.InAnyOrder);
         Assert.AreSequenceEqual(
-            ["find-conventions", "next-id", "add-resx-entries", "doc-url"],
-            groups.Single().Subcommands.Select(c => c.Name).ToArray(),
+            group.Subcommands.Select(c => c.Name).ToArray(),
+            documented.ToArray(),
             SequenceOrder.InAnyOrder);
     }
 
@@ -74,6 +89,53 @@ public sealed class CommandLineTests(TestContext testContext) : IDisposable
 
         Assert.AreEqual(1, exitCode);
         Assert.Contains("--bogus", JsonNode.Parse(output)!["error"]!.ToString());
+    }
+
+    /// <summary>
+    /// Guarantees a bug in the tool arrives as JSON on stdout with exit code 2, told apart from a rejected request by
+    /// that code and by "unexpected": System.CommandLine would otherwise catch it first, print the trace to stderr and
+    /// return 1, leaving the skill with nothing to parse and no way to know the request was never answered.
+    /// </summary>
+    [TestMethod]
+    public void ABugInTheToolIsReportedAsJsonWithItsOwnExitCode()
+    {
+        var file = this._repo.Write("DiagnosticIds.cs",
+            """
+            internal static class DiagnosticIds
+            {
+                public const string DisposableField = "ABC1001";
+            }
+            """);
+
+        // A negative digit count is not validated anywhere, so it reaches the formatting and throws.
+        var (exitCode, output) = Run("add-diagnostic", "next-id", "--ids-file", file, "--digits", "-1");
+
+        Assert.AreEqual(2, exitCode, output);
+        var json = JsonNode.Parse(output)!.AsObject();
+        Assert.IsTrue(json["unexpected"]!.GetValue<bool>());
+        Assert.IsNotNull(json["error"]);
+        Assert.IsNotNull(json["stackTrace"]);
+    }
+
+    /// <summary>
+    /// Guarantees entries JSON the caller got wrong is reported as a rejected request rather than as a bug in the
+    /// tool: the JSON is the agent's own, so re-writing it is exactly what fixes the run.
+    /// </summary>
+    [TestMethod]
+    public void MalformedEntriesJsonIsARejectedRequestAndNotABug()
+    {
+        var resx = this._repo.Write("Resources.resx",
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <root />
+            """);
+
+        var (exitCode, output) = Run("add-diagnostic", "add-resx-entries", "--resx", resx, "--entries", "[{ name: ");
+
+        Assert.AreEqual(1, exitCode, output);
+        var json = JsonNode.Parse(output)!.AsObject();
+        Assert.Contains("--entries", json["error"]!.ToString());
+        Assert.IsNull(json["unexpected"]);
     }
 
     /// <summary>

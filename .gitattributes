@@ -5,5 +5,4 @@
 *.md text diff=markdown
 *.cs text diff=csharp
 
-**/*.lock.json linguist-generated=true merge=ours
-**/*-lock.json linguist-generated=true merge=ours
+**/*.lock.json linguist-generated=true

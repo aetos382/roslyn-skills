@@ -27,7 +27,6 @@
     <NuGetAuditMode>all</NuGetAuditMode>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
     <DisableImplicitLibraryPacksFolder>true</DisableImplicitLibraryPacksFolder>
-    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CI)' == 'true'">
