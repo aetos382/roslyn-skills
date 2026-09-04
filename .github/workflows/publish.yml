@@ -16,8 +16,8 @@ jobs:
       contents: read
 
     steps:
-      # Nothing is rebuilt here: what reaches NuGet.org is the asset release.yml attached and a human then
-      # approved by publishing the release.
+      # Nothing is rebuilt here: what reaches NuGet.org is the asset draft-release.yml attached and a
+      # human then approved by publishing the release.
       - name: Download the release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

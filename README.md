@@ -97,33 +97,12 @@ Every key is optional. See `plugin/skills/add-diagnostic/examples/add-diagnostic
 
 ```
 roslyn-skills/
-├── .claude-plugin/
-│   └── marketplace.json       # makes this repository installable as a marketplace
-├── .github/
-│   ├── dependabot.yml         # NuGet and Actions updates, grouped
-│   └── workflows/
-│       ├── ci.yml             # validates the plugin, then tests and packs
-│       ├── release.yml        # packs one version and drafts its GitHub release
-│       └── publish.yml        # pushes that release's assets to NuGet.org
-├── RoslynSkills.slnx          # the tool and its tests
-├── global.json                # pins the SDK with rollForward disabled, pins MSTest.Sdk, selects the MTP runner
-├── Directory.Build.props      # language, analysis and artifacts settings shared by both projects
-├── Directory.Build.targets    # package metadata, and locked restore on CI
-├── Directory.Packages.props   # every package version, centrally
-├── NuGet.config               # nuget.org alone, with source mapping
-├── LICENSE
-├── README.md                  # also the NuGet package's readme
-├── plugin/                    # what an install delivers, and nothing else
-│   ├── .claude-plugin/
-│   │   └── plugin.json        # plugin manifest
-│   ├── LICENSE
-│   └── skills/
-│       └── add-diagnostic/
-│           ├── SKILL.md
-│           ├── references/    # conventions, descriptor patterns, resx, release tracking, docs
-│           └── examples/      # canonical files and templates
-├── src/                       # the Aetos.RoslynSkills.Tools tool the skills invoke
-└── tests/                     # unit tests for the tool
+├── .claude-plugin/   # the marketplace manifest that makes this repository installable
+├── .github/          # Dependabot, and the CI, draft-release and publish workflows
+├── plugin/           # what an install delivers, and nothing else
+│   └── skills/       # one directory per skill, with its references and examples beside it
+├── src/              # the Aetos.RoslynSkills.Tools tool the skills invoke
+└── tests/            # unit tests for the tool
 ```
 
 `marketplace.json` names `plugin/` as the plugin's source, so an install copies that directory alone into
@@ -134,12 +113,14 @@ that copy is the only one an install carries.
 
 The skill pins the tool's exact version, so an install carries one number: the pins in `SKILL.md` and
 `references/*.md` and the `version` in `plugin/.claude-plugin/plugin.json` all name the version being
-released. The package version is not in the project file at all; `release.yml` passes it to `dotnet pack`.
+released. The package version is not in the project file at all; `draft-release.yml` passes it to
+`dotnet pack`.
 
 `/release <version>` (the repository-local skill in `.claude/skills/release/`) rewrites those pins, commits
-them, and starts `release.yml` at the same number. That workflow re-checks the pins and the manifest against
-its input, so a release whose skills would invoke a package it never built fails before it packs anything.
-It then tests, packs, runs the packed tool, pushes to GitHub Packages, and leaves a **draft** GitHub release.
+them, and starts `draft-release.yml` at the same number. That workflow re-checks the pins and the manifest
+against its input, so a release whose skills would invoke a package it never built fails before it packs
+anything. It then tests, packs, runs the packed tool, pushes to GitHub Packages, and leaves a **draft**
+GitHub release.
 
 Publishing that draft is the last step, and a manual one: it triggers `publish.yml`, which pushes the
 release's assets to NuGet.org, where a version can never be replaced.

@@ -1,6 +1,6 @@
 ---
 name: release
-description: This skill should be used when the user asks to "release", "cut a release", "publish a new version", "バージョンを上げてリリース", or names a version number to ship this repository at. Rewrites the tool version the skills pin, commits it, and starts the Release workflow at that same number. Not for publishing to NuGet.org, which stays a manual step.
+description: This skill should be used when the user asks to "release", "cut a release", "publish a new version", "バージョンを上げてリリース", or names a version number to ship this repository at. Rewrites the tool version the skills pin, commits it, and starts the Draft a release workflow at that same number. Not for publishing to NuGet.org, which stays a manual step.
 argument-hint: <version to release, such as 0.2.0>
 allowed-tools: Read, Edit, Grep, Bash, AskUserQuestion
 ---
@@ -8,8 +8,8 @@ allowed-tools: Read, Edit, Grep, Bash, AskUserQuestion
 # Release
 
 Ship one version of this repository. The version the user names is the authority: the pins under `plugin/`
-are rewritten to it, committed, and handed to `release.yml` as its input, so the skills an install carries
-and the package that gets built cannot name different versions.
+are rewritten to it, committed, and handed to `draft-release.yml` as its input, so the skills an install
+carries and the package that gets built cannot name different versions.
 
 This skill stops at the draft release. Publishing it triggers `publish.yml`, which pushes to NuGet.org, and
 a version on NuGet.org can never be replaced — that button stays in the user's hands.
@@ -26,8 +26,9 @@ git rev-list --left-right --count origin/main...HEAD   # must be 0	0
 git tag --list "v$VERSION"             # must be empty
 ```
 
-The version must match `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, the same shape `release.yml` accepts,
-and must differ from the version currently pinned (`jq -r .version plugin/.claude-plugin/plugin.json`).
+The version must match `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, the same shape `draft-release.yml`
+accepts, and must differ from the version currently pinned
+(`jq -r .version plugin/.claude-plugin/plugin.json`).
 A rerun at the version already pinned is a mistake, not a no-op: the tag would collide.
 
 ## 2. Rewrite the pins
@@ -51,7 +52,7 @@ rg -n 'Aetos\.RoslynSkills\.Tools@' plugin | grep -vF "Aetos.RoslynSkills.Tools@
 ```
 
 That must print nothing, and `jq -r .version plugin/.claude-plugin/plugin.json` must print the new version.
-`release.yml` runs the same check and fails the build, but finding it here costs a workflow run less.
+`draft-release.yml` runs the same check and fails the build, but finding it here costs a workflow run less.
 
 ## 4. Show the diff and confirm
 
@@ -63,13 +64,13 @@ point is visible outside the machine.
 ```bash
 git commit -am "Pin the skills to Aetos.RoslynSkills.Tools $VERSION"
 git push origin main
-gh workflow run release.yml -f version="$VERSION" --ref main
+gh workflow run draft-release.yml -f version="$VERSION" --ref main
 ```
 
 Then find the run it started and follow it:
 
 ```bash
-gh run list --workflow release.yml --limit 1 --json databaseId,url
+gh run list --workflow draft-release.yml --limit 1 --json databaseId,url
 gh run watch <id> --exit-status
 ```
 
