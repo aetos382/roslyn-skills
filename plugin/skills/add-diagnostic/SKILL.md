@@ -192,9 +192,12 @@ four exist:
 Category and message arguments come first because a drafted guess for them is often wrong. Documentation
 is last because the proposal is always *yes* with a concrete path: it counts as offered once it appears
 in the table, whether or not it also gets a question. The same holds for anything else pushed out by the
-four-question cap, since the user can correct any row in an "Other" answer. Keep question texts short; the table carries the context.
-Skip the round entirely when the request already settles everything. Re-draft once from the answers; do
-not loop.
+four-question cap, since the user can correct any row in an "Other" answer. Keep question texts short; the
+table carries the context. An option's description says what that option means and nothing else: the ID
+and its band belong to the table, and spelling them out under each option is worse than useless in a
+repository with no bands yet, where the next unused band is 1 whichever category wins and all four options
+end up claiming the same number. Skip the round entirely when the request already settles everything.
+Re-draft once from the answers; do not loop.
 
 Apply `customTags` only when required (`CompilationEnd`, `Unnecessary`, `NotConfigurable`; see
 `references/descriptors.md`), otherwise omit the argument.
