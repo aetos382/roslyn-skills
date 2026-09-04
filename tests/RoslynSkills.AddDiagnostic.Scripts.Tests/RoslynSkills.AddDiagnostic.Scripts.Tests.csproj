@@ -1,0 +1,21 @@
+<Project Sdk="MSTest.Sdk/4.4.0">
+
+  <PropertyGroup>
+    <!-- net10.0 is the floor the scripts already require: file-based apps need a .NET 10 SDK or later. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Both are on by default in a file-based app, so Common.cs must compile under them here too. -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RoslynSkills.AddDiagnostic.Scripts.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    The scripts are file-based apps with no project of their own, so there is nothing to reference: the
+    shared helpers are compiled into the test assembly instead. That also makes their internal types
+    visible without an InternalsVisibleTo.
+  -->
+  <ItemGroup>
+    <Compile Include="../../plugin/skills/add-diagnostic/scripts/Common.cs" Link="Common.cs" />
+  </ItemGroup>
+
+</Project>

@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "roslyn-skills",
-      "source": "./",
+      "source": "./plugin",
       "description": "Adds a Roslyn diagnostic or suppression end to end: ID constant, DiagnosticDescriptor, resx strings, AnalyzerReleases row, and rule documentation, following the repository's existing conventions."
     }
   ]

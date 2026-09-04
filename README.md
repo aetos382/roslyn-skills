@@ -35,10 +35,11 @@ Pick up later changes with:
 /plugin marketplace update roslyn-skills
 ```
 
-To work on the plugin itself, load a clone directly instead:
+To work on the plugin itself, load a clone directly instead. The plugin lives in the `plugin/`
+subdirectory, so that is the path to pass:
 
 ```bash
-claude --plugin-dir /path/to/roslyn-skills
+claude --plugin-dir /path/to/roslyn-skills/plugin
 ```
 
 ## Conventions the skill enforces
@@ -86,23 +87,44 @@ renders and highlights anywhere. `//` comments and trailing commas are allowed. 
 reported with a line number rather than silently ignored, so a mistyped key cannot pass for a missing one.
 Everything outside the block is free-form notes the skill reads and follows.
 
-Every key is optional. See `skills/add-diagnostic/examples/add-diagnostic.md` for the full list.
+Every key is optional. See `plugin/skills/add-diagnostic/examples/add-diagnostic.md` for the full list.
 
 ## Layout
 
 ```
 roslyn-skills/
 ├── .claude-plugin/
-│   ├── plugin.json        # plugin manifest
-│   └── marketplace.json   # makes this repository installable as a marketplace
+│   └── marketplace.json       # makes this repository installable as a marketplace
+├── global.json                # selects the MTP runner for dotnet test; pins no SDK
 ├── README.md
-└── skills/
-    └── add-diagnostic/
-        ├── SKILL.md
-        ├── references/   # conventions, descriptor patterns, resx, release tracking, docs
-        ├── examples/     # canonical files and templates
-        └── scripts/      # FindConventions.cs, NextId.cs, AddResxEntries.cs, DocUrl.cs, Common.cs
+├── plugin/                    # what an install delivers, and nothing else
+│   ├── .claude-plugin/
+│   │   └── plugin.json        # plugin manifest
+│   ├── LICENSE
+│   └── skills/
+│       └── add-diagnostic/
+│           ├── SKILL.md
+│           ├── references/    # conventions, descriptor patterns, resx, release tracking, docs
+│           ├── examples/      # canonical files and templates
+│           └── scripts/       # FindConventions.cs, NextId.cs, AddResxEntries.cs, DocUrl.cs, Common.cs
+└── tests/                     # unit tests for the scripts' shared helpers
 ```
+
+`marketplace.json` names `plugin/` as the plugin's source, so an install copies that directory alone into
+the plugin cache and the tests never reach it. `CLAUDE_PLUGIN_ROOT` therefore points at `plugin/`, which is
+why the skill's own paths start at `skills/`. The license is duplicated into `plugin/` because that copy is
+the only one an install carries.
+
+## Tests
+
+```bash
+dotnet test tests/RoslynSkills.AddDiagnostic.Scripts.Tests
+```
+
+The scripts are file-based apps with no project, so the test project compiles `Common.cs` in directly
+rather than referencing it. What is covered is the parsing the scripts do on input they do not control:
+the settings file, the command line, the ID constants and band headers, and the file-shape detection that
+decides which directories are skipped.
 
 ## License
 
