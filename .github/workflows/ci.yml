@@ -61,7 +61,8 @@ jobs:
         run: dotnet pack src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj -c Release -o ./artifacts -p:RestoreLockedMode=true
 
       # Exercising the package the way the skill does catches what a build cannot: a missing dependency in
-      # the tool bundle, or a subcommand that no longer starts.
+      # the tool bundle, or a subcommand that no longer starts. Spelled out as the skill spells it: dnx is
+      # the same command, but as a script it is not resolvable from Bash on Windows.
       - name: Run the packed tool
         run: |
           version=$(ls artifacts/Aetos.RoslynSkills.Tools.*.nupkg | sed -E 's/.*\.Tools\.(.+)\.nupkg$/\1/')

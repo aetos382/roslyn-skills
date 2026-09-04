@@ -16,7 +16,8 @@ The skill does not implement analysis logic, code fixes, or tests; it prepares e
 - .NET SDK 10.0 or later. The skill's helpers live under the `add-diagnostic` command group of the
   [`Aetos.RoslynSkills.Tools`](https://www.nuget.org/packages/Aetos.RoslynSkills.Tools) .NET tool, which
   the skill runs from NuGet.org with `dotnet tool exec` at a pinned version, so nothing has to be
-  installed on Windows, macOS, or Linux. One package covers every skill in the plugin: a new skill adds a
+  installed on Windows, macOS, or Linux. Not with `dnx`: that shorthand is a script, which Bash on Windows
+  resolves only as `dnx.cmd`. One package covers every skill in the plugin: a new skill adds a
   command group rather than another package. It runs from a temporary directory and takes repository paths as
   arguments, so a `global.json` at your repository root, which `dotnet` applies to every folder beneath
   it, cannot pin it to an SDK that is not installed.

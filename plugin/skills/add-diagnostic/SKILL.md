@@ -32,7 +32,7 @@ downloads. From Bash:
 
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic"
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic"   # not dnx, see below
 R="/absolute/path/to/the/repository"
 
 $T find-conventions --path "$R" --summary > conventions.json    # then read that file
@@ -44,11 +44,16 @@ $T add-resx-entries --ids-file "$R/src/X/DiagnosticIds.cs" --resx "$R/src/X/Reso
 $T doc-url --doc docs/rules/ABC1001.md --path "$R"             # --doc stays repository-relative
 ```
 
-The `--` is required: without it `dotnet tool exec` reads the subcommand as one of its own options. The
-tool carries one command group per skill, so `add-diagnostic` always comes before the subcommand. Pin the
-version as shown, so the skill and the tool it invokes stay in step. `dnx Aetos.RoslynSkills.Tools@0.1.0 --`
-is shorthand for the same thing when `dnx` is on `PATH`. Only `--doc` is repository-relative, because it
-becomes part of a URL; everything else is an absolute path.
+**Do not use `dnx`**, the documented shorthand for the same command. It is a script, not an executable,
+so Bash on Windows — which is where this skill runs its commands — resolves it only as `dnx.cmd` and
+reports `dnx: command not found` otherwise. `dotnet` is an executable and needs no such workaround.
+
+Keep the `--`: `dotnet tool exec` forwards unknown arguments to the tool, but it claims `--help`,
+`--version`, `-v`, `--source`, `--add-source`, `--configfile`, `--prerelease` and `--interactive` for
+itself, so `... doc-url --help` prints its own help instead. Everything after `--` is passed through
+untouched. The tool carries one command group per skill, so `add-diagnostic` always comes before the
+subcommand. Pin the version as shown, so the skill and the tool it invokes stay in step. Only `--doc` is
+repository-relative, because it becomes part of a URL; everything else is an absolute path.
 
 Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow runs, so no MSBuild
 worker process outlives it holding file locks. `find-conventions` already does this internally. The
