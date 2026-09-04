@@ -72,6 +72,13 @@ the download endpoint still catching up, and retrying after a few minutes succee
 here worth repeating verbatim. Being absent from the nuget.org website or from `dotnet package search` is
 a separate index that lags far longer and never affects `dotnet tool exec`.
 
+When the retry fails too, stop and say so. **Never lower the pin, float it, or reach for whatever version
+does resolve**: the pinned number is what makes this file and the tool one release, and an older tool
+either rejects an argument written here or, worse, accepts it and behaves differently, which reaches the
+user as a wrong edit rather than as an error. A version that will not resolve means the release it belongs
+to has not reached NuGet.org yet — someone has to publish it — and that is a fact to report, not an
+obstacle to work around.
+
 **Run it from the scratchpad**, not from anywhere inside the target repository, and pass absolute paths
 for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
 `global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root
