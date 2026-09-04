@@ -1,9 +1,8 @@
 # AnalyzerReleases.Shipped.md / AnalyzerReleases.Unshipped.md
 
-`Microsoft.CodeAnalysis.Analyzers` ships a release-tracking analyzer (rules RS2000–RS2008). It reads two
-additional files next to the analyzer project and reports RS2000 for every `DiagnosticDescriptor` whose ID
-is not listed in either. The package's build props add both files as `AdditionalFiles` automatically when
-they exist in the project directory, so no csproj change is normally needed.
+`Microsoft.CodeAnalysis.Analyzers` ships a release-tracking analyzer (rules RS2000–RS2008).
+It reads two additional files next to the analyzer project and reports RS2000 for every `DiagnosticDescriptor` whose ID is not listed in either.
+The package's build props add both files as `AdditionalFiles` automatically when they exist in the project directory, so no csproj change is normally needed.
 
 ## Files
 
@@ -12,7 +11,8 @@ they exist in the project directory, so no csproj change is normally needed.
 | `AnalyzerReleases.Unshipped.md` | Rules added, changed, or removed since the last release | This skill (append new rules) |
 | `AnalyzerReleases.Shipped.md` | History of every released version | Release process only (moves Unshipped content under a `## Release x.y` heading) |
 
-One pair per **analyzer assembly** (project), placed in the project directory. A code-fix project has none.
+One pair per **analyzer assembly** (project), placed in the project directory.
+A code-fix project has none.
 A source generator project that reports diagnostics has its own pair.
 
 ## Format
@@ -31,11 +31,11 @@ CTS2002 | Usage | Warning | Forward the CancellationToken parameter to awaited c
 - Lines starting with `;` are comments.
 - Section headings are exactly `### New Rules`, `### Removed Rules`, `### Changed Rules`.
 - The table header row and separator row are required; column order is fixed.
-- `Rule ID` is the value (`CTS2002`), `Category` and `Severity` must match the descriptor's `category`
-  string and `defaultSeverity` name (`Error`, `Warning`, `Info`, `Hidden`). A mismatch triggers RS2001 /
-  RS2003.
-- **Notes**: a short plain-language sentence describing what the rule enforces (this repository's
-  convention). Not the analyzer class name, not the title verbatim. Keep it on one line and avoid `|`.
+- `Rule ID` is the value (`CTS2002`), `Category` and `Severity` must match the descriptor's `category` string and `defaultSeverity` name (`Error`, `Warning`, `Info`, `Hidden`).
+  A mismatch triggers RS2001 / RS2003.
+- **Notes**: a short plain-language sentence describing what the rule enforces (this repository's convention).
+  Not the analyzer class name, not the title verbatim.
+  Keep it on one line and avoid `|`.
 - Disabled-by-default rules are still listed; nothing in the table marks them.
 
 `### Changed Rules` (for reference; not written by this skill):
@@ -50,31 +50,26 @@ CTS1001 | Design | Warning | Design | Info | Promoted after stabilizing
 
 ## Adding a rule
 
-1. Locate `AnalyzerReleases.Unshipped.md` in the project that owns the descriptor
-   (`find-conventions` → `analyzerReleases[].unshipped`).
-2. If the `### New Rules` section exists, append one row after the last row of its table, keeping rows
-   sorted by Rule ID when the existing rows are sorted.
-3. If the section is missing (file only has the comment header), add a blank line, the heading, a blank
-   line, the two header rows, and the new row.
+1. Locate `AnalyzerReleases.Unshipped.md` in the project that owns the descriptor (`find-conventions` → `analyzerReleases[].unshipped`).
+2. If the `### New Rules` section exists, append one row after the last row of its table, keeping rows sorted by Rule ID when the existing rows are sorted.
+3. If the section is missing (file only has the comment header), add a blank line, the heading, a blank line, the two header rows, and the new row.
 4. If the file is missing, create **both** files:
-   - `AnalyzerReleases.Shipped.md` with only the two comment lines (`; Shipped analyzer releases` and the
-     help URL).
+   - `AnalyzerReleases.Shipped.md` with only the two comment lines (`; Shipped analyzer releases` and the help URL).
    - `AnalyzerReleases.Unshipped.md` from `examples/AnalyzerReleases.Unshipped.md`, replacing the rows.
-   Do not add `<AdditionalFiles>` items for them. Recent SDKs register `AnalyzerReleases.*.md` as
-   additional files implicitly, so their absence from the project file means nothing; adding the items
-   by hand is noise, and in the worst case a duplicate.
+     Do not add `<AdditionalFiles>` items for them.
+     Recent SDKs register `AnalyzerReleases.*.md` as additional files implicitly, so their absence from the project file means nothing; adding the items by hand is noise, and in the worst case a duplicate.
 
-Whether tracking actually runs is only observable, never inferable: build once while the descriptor
-exists and its row does not, and look for RS2000 (SKILL.md 5e). A clean build proves nothing, because a
-tracking analyzer that never loads also produces one. If RS2000 does not appear, reference
-`Microsoft.CodeAnalysis.Analyzers` directly with `PrivateAssets="all"`.
+Whether tracking actually runs is only observable, never inferable: build once while the descriptor exists and its row does not, and look for RS2000 (SKILL.md 5e).
+A clean build proves nothing, because a tracking analyzer that never loads also produces one.
+If RS2000 does not appear, reference `Microsoft.CodeAnalysis.Analyzers` directly with `PrivateAssets="all"`.
 
-Use CRLF or LF to match the existing file. End the file with a single newline.
+Use CRLF or LF to match the existing file.
+End the file with a single newline.
 
 ## Suppressions
 
-`SuppressionDescriptor` instances are not tracked by the release-tracking analyzer. Do not add suppression
-IDs to either file.
+`SuppressionDescriptor` instances are not tracked by the release-tracking analyzer.
+Do not add suppression IDs to either file.
 
 ## Related rules
 

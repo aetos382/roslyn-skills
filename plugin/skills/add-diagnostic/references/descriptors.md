@@ -2,9 +2,9 @@
 
 ## Where the descriptor lives
 
-The `DiagnosticDescriptor` is a `private static readonly` field **inside the analyzer or generator class
-that reports it**, never in the IDs file. Its field name equals the ID name. The IDs file stays a flat
-list of constants so it remains a one-page overview.
+The `DiagnosticDescriptor` is a `private static readonly` field **inside the analyzer or generator class that reports it**, never in the IDs file.
+Its field name equals the ID name.
+The IDs file stays a flat list of constants so it remains a one-page overview.
 
 ```csharp
 private static readonly DiagnosticDescriptor DisposableFieldShouldBeDisposed = new(
@@ -18,12 +18,13 @@ private static readonly DiagnosticDescriptor DisposableFieldShouldBeDisposed = n
     helpLinkUri: "https://github.com/contoso/analyzers/blob/main/docs/rules/CTS1001.md");
 ```
 
-Use named arguments so the parameter order is obvious. Omit `helpLinkUri` when no documentation file is
-created (the parameter defaults to `null`). Omit `customTags` unless one is required (below).
+Use named arguments so the parameter order is obvious.
+Omit `helpLinkUri` when no documentation file is created (the parameter defaults to `null`).
+Omit `customTags` unless one is required (below).
 
-After adding the field, add it to the `SupportedDiagnostics` array of the same class. The analyzer will
-throw at runtime if it reports a descriptor that is not listed there. For source generators there is no
-`SupportedDiagnostics`; the descriptor only needs to exist where `context.ReportDiagnostic` uses it.
+After adding the field, add it to the `SupportedDiagnostics` array of the same class.
+The analyzer will throw at runtime if it reports a descriptor that is not listed there.
+For source generators there is no `SupportedDiagnostics`; the descriptor only needs to exist where `context.ReportDiagnostic` uses it.
 
 ## Follow the repository's existing pattern
 
@@ -41,10 +42,9 @@ Before writing a descriptor, read one existing descriptor in the target project 
 
 ## Localizable strings
 
-Where the `LocalizableResourceString` for title / message / description is built depends on what the
-resource class already offers. `find-conventions` reports, per resx group, `localizableStringHelper`
-(method, `accessibility`, file) and `localizableStringProperties` (existing properties, `style`,
-`nestedClass`, file). Pick the first matching row:
+Where the `LocalizableResourceString` for title / message / description is built depends on what the resource class already offers.
+`find-conventions` reports, per resx group, `localizableStringHelper` (method, `accessibility`, file) and `localizableStringProperties` (existing properties, `style`, `nestedClass`, file).
+Pick the first matching row:
 
 | Situation | What to write |
 |-----------|---------------|
@@ -53,8 +53,7 @@ resource class already offers. `find-conventions` reports, per resx group, `loca
 | Helper exists and is `internal` / `public` | Call it: `title: Resources.GetLocalizableResourceString(nameof(Resources.{Name}Title))`. |
 | Neither | Mirror the neighbouring descriptor; with no neighbour use `new LocalizableResourceString(nameof(Resources.{Name}Title), Resources.ResourceManager, typeof(Resources))`. |
 
-Property shape for the nested class (one per resx entry, same name as the entry; `nameof` resolves to
-the generated `string` property of the outer class):
+Property shape for the nested class (one per resx entry, same name as the entry; `nameof` resolves to the generated `string` property of the outer class):
 
 ```csharp
 public static class Localizable
@@ -66,27 +65,22 @@ public static class Localizable
 }
 ```
 
-Keep the properties grouped per diagnostic under a `// {Name} ({ID})` comment, in ID order, matching the
-resx. Use `{ get; } =` initializers (created once) rather than `=>` bodies.
+Keep the properties grouped per diagnostic under a `// {Name} ({ID})` comment, in ID order, matching the resx.
+Use `{ get; } =` initializers (created once) rather than `=>` bodies.
 
-`using` directives follow the file they are added to: match the neighbours' order and grouping (commonly
-`System` first, then third-party, then `Microsoft.CodeAnalysis`), and honour
-`dotnet_separate_import_directive_groups` in `.editorconfig` or `.globalconfig` when it is set. A new
-file copies the layout of the closest existing one in the same project.
+`using` directives follow the file they are added to: match the neighbours' order and grouping (commonly `System` first, then third-party, then `Microsoft.CodeAnalysis`), and honour `dotnet_separate_import_directive_groups` in `.editorconfig` or `.globalconfig` when it is set.
+A new file copies the layout of the closest existing one in the same project.
 
-If the target analyzer class does not exist yet, create the smallest valid class (see
-`examples/AnalyzerWithDescriptor.cs`): the `[DiagnosticAnalyzer(LanguageNames.CSharp)]` attribute, the
-descriptor, `SupportedDiagnostics`, and an `Initialize` that calls `EnableConcurrentExecution()` and
-`ConfigureGeneratedCodeAnalysis(...)` and nothing else. Do not implement the analysis; that is a separate
-task.
+If the target analyzer class does not exist yet, create the smallest valid class (see `examples/AnalyzerWithDescriptor.cs`): the `[DiagnosticAnalyzer(LanguageNames.CSharp)]` attribute, the descriptor, `SupportedDiagnostics`, and an `Initialize` that calls `EnableConcurrentExecution()` and `ConfigureGeneratedCodeAnalysis(...)` and nothing else.
+Do not implement the analysis; that is a separate task.
 
 ## Descriptor fields
 
 ### title, messageFormat, description
 
-All three are `LocalizableResourceString` instances pointing at resx entries named
-`{Name}Title`, `{Name}Message`, `{Name}Description`. Never pass plain string literals (RS1007). Content
-guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
+All three are `LocalizableResourceString` instances pointing at resx entries named `{Name}Title`, `{Name}Message`, `{Name}Description`.
+Never pass plain string literals (RS1007).
+Content guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
 
 | Field | Guideline | Analyzer rule |
 |-------|-----------|---------------|
@@ -94,21 +88,20 @@ guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
 | Message | One sentence, no trailing period, no line breaks; a multi-sentence message may end with a period. Use `{0}`, `{1}` placeholders for arguments and quote symbol names as `'{0}'`. Example: `Field '{0}' is IDisposable but is never disposed` | RS1032 |
 | Description | One or more full sentences ending with punctuation. Explains *why* and hints at the fix. Example: `Types that own IDisposable fields should dispose them in their own Dispose method.` | RS1033 |
 
-Ask the user which arguments the message takes (symbol name, type name, member name, count). Record the
-argument order in a comment above the descriptor when there are two or more arguments, because the
-`Diagnostic.Create` call sites must pass them in the same order.
+Ask the user which arguments the message takes (symbol name, type name, member name, count).
+Record the argument order in a comment above the descriptor when there are two or more arguments, because the `Diagnostic.Create` call sites must pass them in the same order.
 
 ### category
 
-A string constant from the categories class (`DiagnosticCategories.Design`). Infer the category from the
-description when it is obvious (naming rule → Naming, allocation → Performance, misuse of an API → Usage,
-type shape → Design, security → Security, maintainability → Maintainability, reliability → Reliability).
-Ask when unsure or when the repository's categories do not match those names. The category also picks
-the ID band (see `id-conventions.md`).
+A string constant from the categories class (`DiagnosticCategories.Design`).
+Infer the category from the description when it is obvious (naming rule → Naming, allocation → Performance, misuse of an API → Usage, type shape → Design, security → Security, maintainability → Maintainability, reliability → Reliability).
+Ask when unsure or when the repository's categories do not match those names.
+The category also picks the ID band (see `id-conventions.md`).
 
 ### defaultSeverity
 
-Always ask. Offer this guidance when the user wants a recommendation:
+Always ask.
+Offer this guidance when the user wants a recommendation:
 
 | Severity | Use for |
 |----------|---------|
@@ -119,13 +112,14 @@ Always ask. Offer this guidance when the user wants a recommendation:
 
 ### isEnabledByDefault
 
-`true` unless the user says otherwise. Opt-in rules (`false`) still need the AnalyzerReleases entry; note
-the opt-in status in the documentation.
+`true` unless the user says otherwise.
+Opt-in rules (`false`) still need the AnalyzerReleases entry; note the opt-in status in the documentation.
 
 ### helpLinkUri
 
-Set to the full URL of the rule's documentation file (from `doc-url`) when documentation is
-created. Omit the argument when it is not. Do not point at a page that does not exist.
+Set to the full URL of the rule's documentation file (from `doc-url`) when documentation is created.
+Omit the argument when it is not.
+Do not point at a page that does not exist.
 
 ### customTags
 
@@ -138,17 +132,14 @@ Pass a tag only when Roslyn or the IDE requires it for correct behaviour; otherw
 | `WellKnownDiagnosticTags.NotConfigurable` | The severity must not be changeable through `.editorconfig` or rule sets; used for diagnostics that guard correctness of generated code. Use sparingly. |
 | `WellKnownDiagnosticTags.CustomObsolete` | The diagnostic represents an obsoletion and should be treated like `[Obsolete]` by the IDE. |
 
-Never use `Compiler`, `Telemetry`, `AnalyzerException`, `Build`, or `EditAndContinue`; those are reserved for
-the compiler and the host.
+Never use `Compiler`, `Telemetry`, `AnalyzerException`, `Build`, or `EditAndContinue`; those are reserved for the compiler and the host.
 
 ## Descriptors in source generators
 
 Generators report diagnostics with `context.ReportDiagnostic(Diagnostic.Create(descriptor, location, args))`.
-Define the descriptor the same way, as a `private static readonly` field in the generator class (or in a
-`static class Diagnostics` nested in it when the generator has many). Generator diagnostics conventionally
-live in their own band (for example `9xxx`) and are usually `Error` severity because they describe input
-the generator cannot process. The `DiagnosticDescriptor` goes into `AnalyzerReleases.Unshipped.md` exactly
-like an analyzer's.
+Define the descriptor the same way, as a `private static readonly` field in the generator class (or in a `static class Diagnostics` nested in it when the generator has many).
+Generator diagnostics conventionally live in their own band (for example `9xxx`) and are usually `Error` severity because they describe input the generator cannot process.
+The `DiagnosticDescriptor` goes into `AnalyzerReleases.Unshipped.md` exactly like an analyzer's.
 
 ## SuppressionDescriptor
 
@@ -163,10 +154,10 @@ public override ImmutableArray<SuppressionDescriptor> SupportedSuppressions { ge
 ```
 
 - Field name equals the `SuppressionIds` constant name.
-- `suppressedDiagnosticId` is the ID of the *other* rule (`CA1515`, `IDE0051`, `CS8618`, or one of the
-  repository's own diagnostics). Ask for it if the description does not say.
-- `justification` is a full sentence explaining why the suppressed rule does not apply; it appears in the
-  IDE. It is the only resource: `{Name}Justification`.
+- `suppressedDiagnosticId` is the ID of the *other* rule (`CA1515`, `IDE0051`, `CS8618`, or one of the repository's own diagnostics).
+  Ask for it if the description does not say.
+- `justification` is a full sentence explaining why the suppressed rule does not apply; it appears in the IDE.
+  It is the only resource: `{Name}Justification`.
 - No `helpLinkUri`, no category, no severity, no AnalyzerReleases entry.
 - Add the descriptor to `SupportedSuppressions`.
 

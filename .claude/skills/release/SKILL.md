@@ -7,12 +7,11 @@ allowed-tools: Read, Edit, Grep, Bash, AskUserQuestion
 
 # Release
 
-Ship one version of this repository. The version the user names is the authority: the pins under `plugin/`
-are rewritten to it, committed, and handed to `draft-release.yml` as its input, so the skills an install
-carries and the package that gets built cannot name different versions.
+Ship one version of this repository.
+The version the user names is the authority: the pins under `plugin/` are rewritten to it, committed, and handed to `draft-release.yml` as its input, so the skills an install carries and the package that gets built cannot name different versions.
 
-This skill stops at the draft release. Publishing it triggers `publish.yml`, which pushes to NuGet.org, and
-a version on NuGet.org can never be replaced — that button stays in the user's hands.
+This skill stops at the draft release.
+Publishing it triggers `publish.yml`, which pushes to NuGet.org, and a version on NuGet.org can never be replaced — that button stays in the user's hands.
 
 ## 1. Check the preconditions
 
@@ -26,15 +25,11 @@ git rev-list --left-right --count origin/main...HEAD   # must be 0	0
 git tag --list "v$VERSION"             # must be empty
 ```
 
-The version must match `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, the same shape `draft-release.yml`
-accepts, and must differ from the version currently pinned
-(`jq -r .version plugin/.claude-plugin/plugin.json`).
+The version must match `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, the same shape `draft-release.yml` accepts, and must differ from the version currently pinned (`jq -r .version plugin/.claude-plugin/plugin.json`).
 
-A number is spent the moment a run claims it, and a draft that was deleted without ever being published
-spends it just the same. Never reuse one; take the next number instead. Neither failure mode is clean: the
-GitHub Packages push rejects the duplicate version and kills the run before it drafts anything, and if that
-package version was deleted too, nothing is left to object — a draft carries no tag, so GitHub files a
-second draft under the name an earlier one already used and the run still reports success.
+A number is spent the moment a run claims it, and a draft that was deleted without ever being published spends it just the same.
+Never reuse one; take the next number instead.
+Neither failure mode is clean: the GitHub Packages push rejects the duplicate version and kills the run before it drafts anything, and if that package version was deleted too, nothing is left to object — a draft carries no tag, so GitHub files a second draft under the name an earlier one already used and the run still reports success.
 
 ## 2. Rewrite the pins
 
@@ -45,10 +40,8 @@ rg -n 'Aetos\.RoslynSkills\.Tools@' plugin
 jq -r .version plugin/.claude-plugin/plugin.json
 ```
 
-Rewrite every hit to the new version with `Edit`, along with `version` in
-`plugin/.claude-plugin/plugin.json`. Nothing outside `plugin/` carries the version: the package version
-comes from the workflow's `--version` argument, so `Aetos.RoslynSkills.Tools.csproj` has no `<Version>` to
-touch.
+Rewrite every hit to the new version with `Edit`, along with `version` in `plugin/.claude-plugin/plugin.json`.
+Nothing outside `plugin/` carries the version: the package version comes from the workflow's `--version` argument, so `Aetos.RoslynSkills.Tools.csproj` has no `<Version>` to touch.
 
 ## 3. Verify nothing was missed
 
@@ -61,8 +54,8 @@ That must print nothing, and `jq -r .version plugin/.claude-plugin/plugin.json` 
 
 ## 4. Show the diff and confirm
 
-Show `git diff` and ask the user once, with `AskUserQuestion`, before committing. Everything after this
-point is visible outside the machine.
+Show `git diff` and ask the user once, with `AskUserQuestion`, before committing.
+Everything after this point is visible outside the machine.
 
 ## 5. Commit, push, dispatch
 
@@ -81,13 +74,9 @@ gh run watch <id> --exit-status
 
 ## 6. Report
 
-On success, point the user at the repository's releases page,
-<https://github.com/aetos382/roslyn-skills/releases>, where the draft is listed, and tell them that
-publishing it is what sends the package to NuGet.org, irreversibly. Do not publish it, and do not quote the
-draft's own URL: a draft carries no tag, so `gh release view` reports an `untagged-<hash>` address that
-stops resolving the moment the release is published.
+On success, point the user at the repository's releases page, <https://github.com/aetos382/roslyn-skills/releases>, where the draft is listed, and tell them that publishing it is what sends the package to NuGet.org, irreversibly.
+Do not publish it, and do not quote the draft's own URL: a draft carries no tag, so `gh release view` reports an `untagged-<hash>` address that stops resolving the moment the release is published.
 
-On failure, say which step failed and stop. The bump commit is already on `main` by then, which is expected:
-`main` pins a version that is not on NuGet.org yet from the moment of the push until the release is
-published, so the window is not new. Fix the cause in a follow-up commit and dispatch the workflow again at
-the same version — never rewrite or force-push the bump commit, and never delete the tag if one was created.
+On failure, say which step failed and stop.
+The bump commit is already on `main` by then, which is expected: `main` pins a version that is not on NuGet.org yet from the moment of the push until the release is published, so the window is not new.
+Fix the cause in a follow-up commit and dispatch the workflow again at the same version — never rewrite or force-push the bump commit, and never delete the tag if one was created.
