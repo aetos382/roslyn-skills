@@ -91,13 +91,12 @@ jobs:
           dotnet tool exec --source ./artifacts "Aetos.RoslynSkills.Tools@$VERSION"
           -- add-diagnostic find-conventions --path . --summary > /dev/null
 
-      # The pattern carries no dot so it takes the .snupkg as well, which is two files: they are archived
-      # rather than uploaded raw, since archive: false accepts only one.
       - name: Upload package artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: package
-          path: artifacts/*nupkg
+          path: artifacts/*.nupkg
+          archive: false
           if-no-files-found: error
 
       - name: Upload binlog artifact
@@ -124,7 +123,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: >-
           gh release create "v$VERSION"
-          artifacts/*nupkg
+          artifacts/*.nupkg
           --draft
           --title "v$VERSION"
           --generate-notes

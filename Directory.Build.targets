@@ -10,12 +10,6 @@
     <Authors>aetos</Authors>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageProjectUrl>https://github.com/aetos382/roslyn-skills</PackageProjectUrl>
-    <IncludeSymbols Condition="'$(IncludeSymbols)' == ''">true</IncludeSymbols>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(IncludeSymbols)' == 'true'">
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
