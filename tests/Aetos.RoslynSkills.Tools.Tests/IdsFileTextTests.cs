@@ -26,6 +26,26 @@ public sealed class IdsFileTextTests
         Assert.AreEqual(3, bands["Performance"]);
     }
 
+    /// <summary>
+    /// Guarantees a header-shaped line quoted inside a string is not read as a band header, so documentation
+    /// text held in a constant cannot invent a band the file does not actually use.
+    /// </summary>
+    [TestMethod]
+    public void AHeaderQuotedInsideAStringIsNotAHeader()
+    {
+        var bands = IdsFileText.ReadBands(
+            """
+            internal static class DiagnosticIds
+            {
+                // Design (CTS1xxx)
+                public const string Doc = "// Usage (CTS2xxx)";
+            }
+            """);
+
+        Assert.AreEqual(1, bands["Design"]);
+        Assert.IsFalse(bands.ContainsKey("Usage"));
+    }
+
     /// <summary>Guarantees a category name is matched without regard to case, as next-id passes it through verbatim.</summary>
     [TestMethod]
     public void CategoryNamesAreMatchedCaseInsensitively()

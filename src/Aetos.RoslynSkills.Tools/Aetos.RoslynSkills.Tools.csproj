@@ -36,6 +36,18 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.11" />
+    <!--
+      Reading C# with the same parser the compiler uses. Only syntax is needed, so no Compilation and no
+      MetadataReference: the cost is the ~15 MB the two assemblies add to the package, kept to that by
+      SatelliteResourceLanguages above (Roslyn ships thirteen more languages).
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <!--
+      Pinned only because the 5.9.0 packages above ask for a prerelease of it, which would otherwise be
+      what the lock file records. Roslyn's own advice for the releases already out:
+      https://github.com/dotnet/roslyn/issues/84099
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
   </ItemGroup>
 
   <ItemGroup>

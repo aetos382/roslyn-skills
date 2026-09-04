@@ -50,6 +50,28 @@
         "resolved": "2.23.0",
         "contentHash": "nWArUZTdU7iqZLycLKWe0TDms48KKGE6pONH2terYNa8REXiqixrMOkf1sk5DHGMaUTqONU2YkS4SAXBhLStgw=="
       },
+      "Microsoft.CodeAnalysis.Analyzers": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "jMNOo+uoBGiWbZ6Wx0dqU93r5WD4P5WnIRZdoz67RP5N09OUetHgAbo4L7hihOH1NHdD2TgW5/l+SP4gQukwww=="
+      },
+      "Microsoft.CodeAnalysis.Common": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "IYaIaUWdIx539AReKZOBEqTskFusZfCh/wFSPilDvCn5Say8MegLw2LONcSIcVy+v3Gzv53qYBspgvBGSErfbQ==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17"
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "7JGDA0UT1+h7k9ZcA3rF4eFC8+QPq1xyYaXxag4p8r/zzPurEJxvdi7aM+MRL/SfP7XADXpWF/pl/eUYXOq/ww==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
+          "Microsoft.CodeAnalysis.Common": "[5.9.0]"
+        }
+      },
       "Microsoft.DiaSymReader": {
         "type": "Transitive",
         "resolved": "2.2.10",
@@ -108,6 +130,8 @@
       "aetos.roslynskills.tools": {
         "type": "Project",
         "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "[5.9.0, )",
+          "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "System.CommandLine": "[2.0.11, )"
         }
       }

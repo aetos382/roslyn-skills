@@ -48,15 +48,14 @@ internal static class FindConventionsCommand
         // ---------------------------------------------------------------------------
         // A class gets a role only when the role type appears in its base list (not merely somewhere in the file,
         // which would misclassify test drivers that mention IIncrementalGenerator).
-        var roleBaseTypes = new Dictionary<string, Regex>
+        var roleBaseTypes = new Dictionary<string, string[]>
         {
-            ["analyzer"] = new(@"\bDiagnosticAnalyzer\b"),
-            ["generator"] = new(@"\bI(?:IncrementalGenerator|SourceGenerator)\b"),
-            ["suppressor"] = new(@"\bDiagnosticSuppressor\b"),
-            ["codefix"] = new(@"\bCodeFixProvider\b"),
-            ["refactoring"] = new(@"\bCodeRefactoringProvider\b"),
+            ["analyzer"] = ["DiagnosticAnalyzer"],
+            ["generator"] = ["IIncrementalGenerator", "ISourceGenerator"],
+            ["suppressor"] = ["DiagnosticSuppressor"],
+            ["codefix"] = ["CodeFixProvider"],
+            ["refactoring"] = ["CodeRefactoringProvider"],
         };
-        var classWithBases = new Regex(@"\bclass\s+(?<name>\w+)\s*(?:<[^>]*>)?\s*:\s*(?<bases>[^{;]*)\{", RegexOptions.Singleline);
 
         // Project data comes from MSBuild itself rather than from reading the XML: only a real evaluation knows
         // what custom .props/.targets, imported .projitems, central package management and conditions produce.
@@ -116,21 +115,16 @@ internal static class FindConventionsCommand
             var classes = new Dictionary<string, List<(string Class, string File)>>();
             foreach (var cs in sourceFiles.OrderBy(f => f, StringComparer.Ordinal))
             {
-                var text = File.ReadAllText(cs);
-                if (neutralLanguage is null)
+                var source = CSharpSource.Parse(File.ReadAllText(cs));
+                neutralLanguage ??= source.AssemblyAttributeArgument("NeutralResourcesLanguage");
+                foreach (var (className, bases) in source.ClassesWithBaseTypes())
                 {
-                    var nm = Regex.Match(text, @"assembly\s*:\s*NeutralResourcesLanguage(?:Attribute)?\s*\(\s*""(?<lang>[^""]+)""");
-                    if (nm.Success) neutralLanguage = nm.Groups["lang"].Value;
-                }
-                foreach (Match cm in classWithBases.Matches(text))
-                {
-                    var bases = cm.Groups["bases"].Value;
-                    foreach (var (role, rx) in roleBaseTypes)
+                    foreach (var (role, roleTypes) in roleBaseTypes)
                     {
-                        if (!rx.IsMatch(bases)) continue;
+                        if (!bases.Any(roleTypes.Contains)) continue;
                         if (!roles.Contains(role)) roles.Add(role);
                         if (!classes.TryGetValue(role, out var list)) classes[role] = list = new();
-                        var entry = (cm.Groups["name"].Value, Repo.Rel(root, cs));
+                        var entry = (className, Repo.Rel(root, cs));
                         if (!list.Contains(entry)) list.Add(entry);
                     }
                 }
@@ -157,7 +151,6 @@ internal static class FindConventionsCommand
         // ---------------------------------------------------------------------------
         var idFiles = new Dictionary<string, (List<IdConst> Ids, string? ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
         var categoryFiles = new Dictionary<string, (string ClassName, string Visibility, string Text)>(StringComparer.OrdinalIgnoreCase);
-        var stringConstRegex = new Regex(@"(?m)^\s*(?:public|internal|private)?\s*const\s+string\s+(?<name>\w+)\s*=\s*""(?<value>[^""]*)""\s*;");
         foreach (var cs in Repo.Files(root, "*.cs"))
         {
             var text = File.ReadAllText(cs);
@@ -244,7 +237,7 @@ internal static class FindConventionsCommand
                 var idsDir = diagIds is not null ? Path.GetDirectoryName(Path.Combine(root, diagIds["path"]!.ToString())) : null;
                 file = categoryFiles.Keys
                     .OrderByDescending(k => idsDir is not null && string.Equals(Path.GetDirectoryName(k), idsDir, StringComparison.OrdinalIgnoreCase))
-                    .ThenByDescending(k => stringConstRegex.Matches(categoryFiles[k].Text).Count)
+                    .ThenByDescending(k => CSharpSource.Parse(categoryFiles[k].Text).ConstStrings().Count())
                     .ThenBy(k => k, StringComparer.Ordinal)
                     .First();
             }
@@ -257,7 +250,7 @@ internal static class FindConventionsCommand
                     info = (cls ?? "", vis, text);
                 }
                 var values = new JsonObject();
-                foreach (Match m in stringConstRegex.Matches(info.Text)) values[m.Groups["name"].Value] = m.Groups["value"].Value;
+                foreach (var constant in CSharpSource.Parse(info.Text).ConstStrings()) values[constant.Name] = constant.Value;
                 categoriesInfo = new JsonObject
                 {
                     ["path"] = Repo.Rel(root, file),
@@ -289,10 +282,7 @@ internal static class FindConventionsCommand
             if (generator is null && File.Exists(designer)) generator = "ResXFileCodeGenerator (inferred from Designer.cs)";
             var resourceClass = g.Key.Base;
             if (File.Exists(designer))
-            {
-                var dm = Regex.Match(File.ReadAllText(designer), @"class\s+(\w+)");
-                if (dm.Success) resourceClass = dm.Groups[1].Value;
-            }
+                resourceClass = CSharpSource.Parse(File.ReadAllText(designer)).FirstClassName() ?? resourceClass;
             // A hand-written helper such as `static LocalizableResourceString GetLocalizableResourceString(string name)`
             // (usually in a partial of the resource class). Its accessibility matters: a private helper means the
             // intended entry points are LocalizableResourceString properties inside the same class.
@@ -300,39 +290,35 @@ internal static class FindConventionsCommand
             JsonObject? properties = null;
             if (owner is not null)
             {
-                var helperRegex = new Regex(@"(?<acc>public|internal|private|protected)?\s*static\s+(?:Microsoft\.CodeAnalysis\.)?Localizable(?:Resource)?String\s+(?<m>\w+)\s*\(\s*string\s+\w+\s*\)");
-                var propRegex = new Regex(@"(?<acc>public|internal)\s+static\s+(?:readonly\s+)?(?:Microsoft\.CodeAnalysis\.)?Localizable(?:Resource)?String\s+(?<name>\w+)\s*(?:\{|=>)");
                 foreach (var cs in Repo.Files(owner.FullDirectory, "*.cs"))
                 {
-                    var text = File.ReadAllText(cs);
-                    var hm = helperRegex.Match(text);
-                    if (hm.Success && helper is null)
+                    if (helper is not null && properties is not null) break;
+                    var source = CSharpSource.Parse(File.ReadAllText(cs));
+                    if (helper is null && source.LocalizableStringHelper() is { } h)
                     {
                         helper = new JsonObject
                         {
-                            ["class"] = string.Join('.', SourceScan.ContainingClasses(text, hm.Index)),
-                            ["method"] = hm.Groups["m"].Value,
-                            ["accessibility"] = hm.Groups["acc"].Success && hm.Groups["acc"].Value.Length > 0 ? hm.Groups["acc"].Value : "private",
+                            ["class"] = string.Join('.', h.ContainingClasses),
+                            ["method"] = h.Name,
+                            ["accessibility"] = h.Accessibility,
                             ["file"] = Repo.Rel(root, cs),
                         };
                     }
-                    var pms = propRegex.Matches(text);
-                    if (pms.Count > 0 && properties is null)
+                    if (properties is null && source.LocalizableStringMembers() is { Count: > 0 } members)
                     {
-                        var first = pms[0];
-                        var path = SourceScan.ContainingClasses(text, first.Index);
-                        var nested = path.Count >= 2 ? path[^1] : null;
-                        var sm = Regex.Match(first.Groups["name"].Value, @"^(?<base>.+?)(?:Title|Message|Description|Justification)(?<suffix>\w*)$");
+                        var first = members[0];
+                        var nested = first.ContainingClasses.Count >= 2 ? first.ContainingClasses[^1] : null;
+                        var sm = Regex.Match(first.Name, @"^(?<base>.+?)(?:Title|Message|Description|Justification)(?<suffix>\w*)$");
                         var suffix = sm.Success ? sm.Groups["suffix"].Value : "";
                         properties = new JsonObject
                         {
                             ["file"] = Repo.Rel(root, cs),
-                            ["class"] = string.Join('.', path),
+                            ["class"] = string.Join('.', first.ContainingClasses),
                             ["style"] = nested is not null ? "nested" : suffix.Length > 0 ? "suffix" : "unknown",
                             ["nestedClass"] = nested,
                             ["suffix"] = suffix,
-                            ["accessibility"] = first.Groups["acc"].Value,
-                            ["names"] = Json.Array(pms.Cast<Match>().Select(m => m.Groups["name"].Value)),
+                            ["accessibility"] = first.Accessibility,
+                            ["names"] = Json.Array(members.Select(m => m.Name)),
                         };
                     }
                 }
