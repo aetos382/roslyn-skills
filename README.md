@@ -130,9 +130,19 @@ roslyn-skills/
 the plugin cache; the tool and its tests never reach it. The license is duplicated into `plugin/` because
 that copy is the only one an install carries.
 
-The skill pins the tool's exact version, so a release bumps `plugin/.claude-plugin/plugin.json`, the
-`<Version>` in `src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj`, and the version written in
-`SKILL.md` and `references/*.md` together. Pushing a `v*` tag publishes the package to NuGet.org.
+## Releasing
+
+The skill pins the tool's exact version, so an install carries one number: the pins in `SKILL.md` and
+`references/*.md` and the `version` in `plugin/.claude-plugin/plugin.json` all name the version being
+released. The package version is not in the project file at all; `release.yml` passes it to `dotnet pack`.
+
+`/release <version>` (the repository-local skill in `.claude/skills/release/`) rewrites those pins, commits
+them, and starts `release.yml` at the same number. That workflow re-checks the pins and the manifest against
+its input, so a release whose skills would invoke a package it never built fails before it packs anything.
+It then tests, packs, runs the packed tool, pushes to GitHub Packages, and leaves a **draft** GitHub release.
+
+Publishing that draft is the last step, and a manual one: it triggers `publish.yml`, which pushes the
+release's assets to NuGet.org, where a version can never be replaced.
 
 ## Tests
 

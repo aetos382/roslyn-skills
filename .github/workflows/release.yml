@@ -34,8 +34,9 @@ jobs:
 
       # SKILL.md names the version of the tool the agent runs, so a release whose pins name anything else
       # would ship skills that invoke a package this run never built. A tree with no pin at all fails too,
-      # otherwise deleting the pins would quietly disable the check.
-      - name: Check the skill's version pins
+      # otherwise deleting the pins would quietly disable the check. The plugin manifest is checked with
+      # them: an install carries one version of both.
+      - name: Check the version pins and the plugin manifest
         env:
           VERSION: ${{ inputs.version }}
         run: |
@@ -46,6 +47,12 @@ jobs:
           fi
           if echo "$pins" | grep -vF "Aetos.RoslynSkills.Tools@$VERSION"; then
             echo "::error::the lines above pin a version other than $VERSION"
+            exit 1
+          fi
+          # The plugin ships the skills that pin the tool, so the two versions are one number by design.
+          # grep rather than jq, which the runner image does not promise.
+          if ! grep -qF "\"version\": \"$VERSION\"" plugin/.claude-plugin/plugin.json; then
+            echo "::error::plugin/.claude-plugin/plugin.json does not declare version $VERSION"
             exit 1
           fi
 
