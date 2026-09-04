@@ -29,7 +29,12 @@ git tag --list "v$VERSION"             # must be empty
 The version must match `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, the same shape `draft-release.yml`
 accepts, and must differ from the version currently pinned
 (`jq -r .version plugin/.claude-plugin/plugin.json`).
-A rerun at the version already pinned is a mistake, not a no-op: the tag would collide.
+
+A number is spent the moment a run claims it, and a draft that was deleted without ever being published
+spends it just the same. Never reuse one; take the next number instead. Neither failure mode is clean: the
+GitHub Packages push rejects the duplicate version and kills the run before it drafts anything, and if that
+package version was deleted too, nothing is left to object — a draft carries no tag, so GitHub files a
+second draft under the name an earlier one already used and the run still reports success.
 
 ## 2. Rewrite the pins
 
