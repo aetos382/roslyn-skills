@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>RoslynSkills.AddDiagnostic.Scripts.Tests</RootNamespace>
+    <!-- packages.lock.json is what CI keys the NuGet cache on. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <!--
