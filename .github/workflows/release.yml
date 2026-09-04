@@ -69,7 +69,7 @@ jobs:
         run: >-
           dotnet test RoslynSkills.slnx
           --configuration Release
-          -p:RestoreLockedMode=true
+          --report-gh
 
       - name: Pack
         env:
@@ -79,7 +79,6 @@ jobs:
           --configuration Release
           --output artifacts
           --version "$VERSION"
-          -p:RestoreLockedMode=true
           -bl:artifacts/pack.binlog
 
       # A version on NuGet.org can never be replaced, so the package that gets pushed is the one exercised

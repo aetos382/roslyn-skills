@@ -63,14 +63,11 @@ jobs:
           cache: true
           cache-dependency-path: '**/packages.lock.json'
 
-      # Locked mode fails the restore instead of silently updating packages.lock.json when a package
-      # reference has moved. It is passed on the command line because no project sets
-      # RestorePackagesWithLockFile, which is what Directory.Build.targets keys the property off.
       - name: Test
         run: >-
           dotnet test RoslynSkills.slnx
           --configuration Release
-          -p:RestoreLockedMode=true
+          --report-gh
 
       # The package is what the skill actually invokes, so a break in packaging has to fail here rather
       # than at release time.
@@ -79,7 +76,6 @@ jobs:
           dotnet pack src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj
           --configuration Release
           --output artifacts
-          -p:RestoreLockedMode=true
 
       # Exercising the package the way the skill does catches what a build cannot: a missing dependency in
       # the tool bundle, or a subcommand that no longer starts. Spelled out as the skill spells it: dnx is
