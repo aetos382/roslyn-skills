@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Aetos.RoslynSkills.Tools</RootNamespace>
+    <!--
+      Culture detection splits Resources.ja.resx on a real CultureInfo lookup, and under invariant
+      globalization every name resolves, which would make Resources.foo.resx a culture file too.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!--
+      Output is read by an agent, and mixing System.CommandLine's localized parse errors into the JSON
+      would only make them harder to match. Shipping no satellite assemblies keeps every message English.
+    -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackAsTool>true</PackAsTool>
+    <PackageId>Aetos.RoslynSkills.Tools</PackageId>
+    <ToolCommandName>roslyn-skills</ToolCommandName>
+    <!--
+      Kept in step with the plugin manifest's version: SKILL.md pins this exact version, so the skills and
+      the tool they invoke are released together.
+    -->
+    <Version>0.1.0</Version>
+    <Authors>aetos</Authors>
+    <Description>Helper commands for the roslyn-skills Claude Code plugin. One subcommand group per skill; add-diagnostic covers repository convention detection, diagnostic ID allocation, ordered resx insertion, and documentation URL resolution. Every command prints JSON.</Description>
+    <PackageTags>roslyn;analyzer;diagnostics;dotnet-tool;claude-code</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/aetos382/roslyn-skills#readme</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/aetos382/roslyn-skills</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <InternalsVisibleTo Include="Aetos.RoslynSkills.Tools.Tests" />
+  </ItemGroup>
+
+</Project>

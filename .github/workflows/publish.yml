@@ -1,0 +1,65 @@
+name: Publish
+
+# The trusted publishing policy on nuget.org names this file, so renaming it breaks the OIDC exchange.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to NuGet.org
+    runs-on: ubuntu-latest
+    environment: release
+
+    permissions:
+      id-token: write # the OIDC token NuGet/login exchanges for a short-lived API key
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      # A version published to NuGet.org can never be replaced, so the tag, the project, and the version
+      # SKILL.md tells the agent to run are all checked against each other before anything is packed.
+      - name: Check the tag against the project and the skill
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj)
+          if [ "$tag" != "$project" ]; then
+            echo "::error::tag $tag does not match <Version> $project"
+            exit 1
+          fi
+          if grep -rn "Aetos.RoslynSkills.Tools@" plugin/skills | grep -v "Aetos.RoslynSkills.Tools@$tag"; then
+            echo "::error::the lines above pin a version other than $tag"
+            exit 1
+          fi
+
+      - name: Test
+        run: dotnet test tests/Aetos.RoslynSkills.Tools.Tests/Aetos.RoslynSkills.Tools.Tests.csproj -p:RestoreLockedMode=true
+
+      - name: Pack
+        run: dotnet pack src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj -c Release -o ./artifacts -p:RestoreLockedMode=true
+
+      # Trusted publishing: no API key is stored anywhere. NUGET_USER is the nuget.org profile name.
+      - name: NuGet login (OIDC)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push
+        run: >
+          dotnet nuget push ./artifacts/*.nupkg
+          --source https://api.nuget.org/v3/index.json
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --skip-duplicate

@@ -50,7 +50,19 @@ jobs:
           cache: true
           cache-dependency-path: '**/packages.lock.json'
 
-      # There is no solution file, so the test project is named explicitly. Locked mode fails the
+      # There is no solution file, so each project is named explicitly. Locked mode fails the
       # restore instead of silently updating packages.lock.json when a package reference has moved.
       - name: Test
-        run: dotnet test tests/RoslynSkills.AddDiagnostic.Scripts.Tests/RoslynSkills.AddDiagnostic.Scripts.Tests.csproj -p:RestoreLockedMode=true
+        run: dotnet test tests/Aetos.RoslynSkills.Tools.Tests/Aetos.RoslynSkills.Tools.Tests.csproj -p:RestoreLockedMode=true
+
+      # The package is what the skill actually invokes, so a break in packaging has to fail here rather
+      # than at release time.
+      - name: Pack
+        run: dotnet pack src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj -c Release -o ./artifacts -p:RestoreLockedMode=true
+
+      # Exercising the package the way the skill does catches what a build cannot: a missing dependency in
+      # the tool bundle, or a subcommand that no longer starts.
+      - name: Run the packed tool
+        run: |
+          version=$(ls artifacts/Aetos.RoslynSkills.Tools.*.nupkg | sed -E 's/.*\.Tools\.(.+)\.nupkg$/\1/')
+          dotnet tool exec --source ./artifacts "Aetos.RoslynSkills.Tools@$version" -- add-diagnostic find-conventions --path . --summary > /dev/null

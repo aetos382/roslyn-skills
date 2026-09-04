@@ -1,6 +1,8 @@
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace RoslynSkills.AddDiagnostic.Scripts.Tests;
+namespace Aetos.RoslynSkills.Tools.Tests;
 
 [TestClass]
 public sealed class IdsFileTextTests
@@ -24,7 +26,7 @@ public sealed class IdsFileTextTests
         Assert.AreEqual(3, bands["Performance"]);
     }
 
-    /// <summary>Guarantees a category name is matched without regard to case, as NextId.cs passes it through verbatim.</summary>
+    /// <summary>Guarantees a category name is matched without regard to case, as next-id passes it through verbatim.</summary>
     [TestMethod]
     public void CategoryNamesAreMatchedCaseInsensitively()
     {

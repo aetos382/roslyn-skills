@@ -1,5 +1,0 @@
-<!--
-  Intentionally empty; see Directory.Build.props in this directory. Blocks a host repository's central
-  package management from applying to the scripts' virtual projects.
--->
-<Project />

@@ -51,7 +51,7 @@ CTS1001 | Design | Warning | Design | Info | Promoted after stabilizing
 ## Adding a rule
 
 1. Locate `AnalyzerReleases.Unshipped.md` in the project that owns the descriptor
-   (`FindConventions.cs` → `analyzerReleases[].unshipped`).
+   (`find-conventions` → `analyzerReleases[].unshipped`).
 2. If the `### New Rules` section exists, append one row after the last row of its table, keeping rows
    sorted by Rule ID when the existing rows are sorted.
 3. If the section is missing (file only has the comment header), add a blank line, the heading, a blank

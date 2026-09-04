@@ -1,6 +1,8 @@
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace RoslynSkills.AddDiagnostic.Scripts.Tests;
+namespace Aetos.RoslynSkills.Tools.Tests;
 
 [TestClass]
 public sealed class IdConstTests

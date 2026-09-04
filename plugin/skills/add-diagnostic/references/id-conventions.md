@@ -75,7 +75,7 @@ Rules:
    `.claude/roslyn-skills/add-diagnostic.md` under `"categories"`. Read the mapping from there; do not
    invent a new mapping when one exists.
 2. A new diagnostic takes the next free number **inside its category's band**
-   (`NextId.cs --category <name>` computes it). Gaps are fine; do not fill holes left by
+   (`next-id --category <name>` computes it). Gaps are fine; do not fill holes left by
    removed rules.
 3. A new category takes the next unused band. Add its comment header to the IDs file, its constant to the
    categories class, and (if the config file exists) its entry under `"categories"`.
@@ -101,7 +101,7 @@ public static class DiagnosticIds
 }
 ```
 
-The comment header must match `// <Category> (<PREFIX><band>xxx)` so the scripts can read the mapping.
+The comment header must match `// <Category> (<PREFIX><band>xxx)` so the tool can read the mapping.
 Variants such as `// ---- Usage: CTS2xxx ----` are also recognized, but keep one style per file.
 
 To insert a constant: find the band's header, walk its constants, and insert before the first constant
@@ -122,7 +122,7 @@ See `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/Dia
 
 - Value: `<PREFIX>S<NUMBER>` with the same digit count as diagnostics. The sequence is independent from
   diagnostics and has no bands: take the highest existing number plus one
-  (`NextId.cs --suppression`).
+  (`next-id --suppression`).
 - Name: PascalCase statement of what is **allowed**, from the point of view of the suppressed rule:
   `TestClassesMayBePublic`, `EventHandlersMayBeUnused`, `GeneratedCodeMayOmitDocumentation`.
   `May` reads naturally for suppressions.
@@ -225,7 +225,7 @@ has one.
 
 ### What to do
 
-1. Detect: `FindConventions.cs` reports `idSharing` and `diagnosticIdsProject`, the project that owns
+1. Detect: `find-conventions` reports `idSharing` and `diagnosticIdsProject`, the project that owns
    the IDs file. A repository whose analyzer and code fix both reference a neutral project is
    `SharedProject`, even though every wire in it is a `<ProjectReference>`:
 

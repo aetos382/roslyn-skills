@@ -1,10 +1,10 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace RoslynSkills.AddDiagnostic.Scripts.Tests;
+namespace Aetos.RoslynSkills.Tools.Tests;
 
 /// <summary>
-/// FindConventions.cs calls FindVendoredPlugins once and the result is kept in static state that IsExcluded
-/// then reads, so these tests run one at a time and reset it afterwards.
+/// The find-conventions command calls FindVendoredPlugins once and the result is kept in static state that
+/// IsExcluded then reads, so these tests run one at a time and reset it afterwards.
 /// </summary>
 [TestClass]
 [DoNotParallelize]

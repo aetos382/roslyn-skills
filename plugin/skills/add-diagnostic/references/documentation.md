@@ -18,7 +18,7 @@ Include the target path in the proposal so the user can redirect it in one step,
 | Rule page | `<ID>.md`, e.g. `docs/rules/CTS1001.md` | — |
 | Index | `README.md` inside the directory (GitHub renders it when the folder is opened) | `docsIndexFile` |
 
-Always prefer what the repository already does. `FindConventions.cs` searches the whole tree and reports,
+Always prefer what the repository already does. `find-conventions` searches the whole tree and reports,
 in decreasing order of certainty:
 
 | Field | Meaning | What to do |
@@ -65,10 +65,10 @@ suppression is not needed by default. Behaviour:
 
 ## Computing the URL
 
-`helpLinkUri` must be the permanent URL of the page on the default branch. Use the script:
+`helpLinkUri` must be the permanent URL of the page on the default branch. Use the tool:
 
 ```bash
-dotnet "${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts/DocUrl.cs" -- \
+dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic doc-url \
   --doc docs/rules/CTS1001.md --path /absolute/path/to/the/repository
 ```
 
@@ -80,7 +80,7 @@ Resolution order for the template: `--template` argument → `docUrlTemplate` in
 `.claude/roslyn-skills/add-diagnostic.md`
 → `https://github.com/{owner}/{repo}/blob/{branch}/{path}` when `origin` points at github.com. Owner and
 repo come from the `origin` remote; branch from `origin/HEAD`, then `gh repo view`, then the current
-branch. The script throws when the host is not GitHub and no template is configured; in that case ask the
+branch. The command fails when the host is not GitHub and no template is configured; in that case ask the
 user for the template (GitLab: `https://gitlab.com/{owner}/{repo}/-/blob/{branch}/{path}`, Azure DevOps and
 others vary) and store it in the config file.
 
@@ -95,7 +95,7 @@ that the user wants to override. `//` comments and trailing commas are allowed, 
 its own keys. Every key is optional. See `examples/add-diagnostic.md`. The directory is the plugin name and
 the file is the skill name, so a plugin with more skills keeps their settings side by side.
 
-A malformed block is an error, not a fallback: the scripts report `{"error": ..., "hint": ...}` with the
+A malformed block is an error, not a fallback: the tool reports `{"error": ..., "hint": ...}` with the
 line number and exit 1 instead of carrying on with the file ignored. A mistyped key would otherwise look
 exactly like a missing one, and the report would describe conventions the repository does not follow.
 

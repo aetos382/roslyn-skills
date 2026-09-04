@@ -1,0 +1,15 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      net10.0 is the floor the tool already needs: it shells out to `dotnet msbuild` for project
+      evaluation, so an SDK of that generation has to be present anyway.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- packages.lock.json is what CI keys the NuGet cache on. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

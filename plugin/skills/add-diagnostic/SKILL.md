@@ -21,56 +21,56 @@ analysis itself. The deliverable is a consistent set of edits:
 `$ARGUMENTS` is a plain-language description of what the diagnostic should report. When it is empty, ask
 for it before anything else.
 
-## Scripts
+## The helper tool
 
-Four file-based C# apps live in `scripts/` and need the .NET 10 SDK, 10.0.300 or later (they share
-`Common.cs` through `#:include`, which older SDKs do not support). `FindConventions.cs` additionally runs
+The four helpers live under the `add-diagnostic` command group of the `Aetos.RoslynSkills.Tools` .NET
+tool, run straight from NuGet.org without installing anything. It needs the .NET 10 SDK or later. `find-conventions` runs
 `dotnet msbuild` once per project, in parallel, so project data comes from a real evaluation rather than
 from reading XML: custom `.props`/`.targets`, central package management and conditions are all resolved.
-Expect a second or two on a small repository. Run them with `dotnet <file>.cs -- <options>`; the first run
-compiles and later runs are cached. From Bash:
+Expect a second or two on a small repository, plus a few seconds on the first run while the tool package
+downloads. From Bash:
 
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
-S="${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts"
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic"
 R="/absolute/path/to/the/repository"
 
-dotnet "$S/FindConventions.cs" -- --path "$R" --summary > conventions.json   # then read that file
-dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/DiagnosticIds.cs" --category Usage
-dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/DiagnosticIds.cs" --prefix ABC --band 1   # fresh repository
-dotnet "$S/NextId.cs" -- --ids-file "$R/src/X/SuppressionIds.cs" --suppression
-dotnet "$S/AddResxEntries.cs" -- --resx "$R/src/X/Resources.resx"    --ids-file "$R/src/X/DiagnosticIds.cs" --entries entries.en.json
-dotnet "$S/AddResxEntries.cs" -- --resx "$R/src/X/Resources.ja.resx" --ids-file "$R/src/X/DiagnosticIds.cs" --entries entries.ja.json
-dotnet "$S/DocUrl.cs" -- --doc docs/rules/ABC1001.md --path "$R"      # --doc stays repository-relative
+$T find-conventions --path "$R" --summary > conventions.json    # then read that file
+$T next-id --ids-file "$R/src/X/DiagnosticIds.cs" --category Usage
+$T next-id --ids-file "$R/src/X/DiagnosticIds.cs" --prefix ABC --band 1     # fresh repository
+$T next-id --ids-file "$R/src/X/SuppressionIds.cs" --suppression
+$T add-resx-entries --ids-file "$R/src/X/DiagnosticIds.cs" --resx "$R/src/X/Resources.resx"    --entries entries.en.json
+$T add-resx-entries --ids-file "$R/src/X/DiagnosticIds.cs" --resx "$R/src/X/Resources.ja.resx" --entries entries.ja.json
+$T doc-url --doc docs/rules/ABC1001.md --path "$R"             # --doc stays repository-relative
 ```
 
-Three separate locations are in play: the working directory decides which SDK runs, the script path is
-in the plugin, and the arguments name the repository. Only `--doc` is repository-relative, because it
+The `--` is required: without it `dotnet tool exec` reads the subcommand as one of its own options. The
+tool carries one command group per skill, so `add-diagnostic` always comes before the subcommand. Pin the
+version as shown, so the skill and the tool it invokes stay in step. `dnx Aetos.RoslynSkills.Tools@0.1.0 --`
+is shorthand for the same thing when `dnx` is on `PATH`. Only `--doc` is repository-relative, because it
 becomes part of a URL; everything else is an absolute path.
 
 Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow runs, so no MSBuild
-worker process outlives it holding file locks. `FindConventions.cs` already does this internally. The
+worker process outlives it holding file locks. `find-conventions` already does this internally. The
 switch is spelled `-nodeReuse:false` or `-nr:false`; `/node-reuse:false` is rejected with MSB1001.
 
-`CLAUDE_PLUGIN_ROOT` is often unset, in Bash as well as in PowerShell (`$env:CLAUDE_PLUGIN_ROOT`); fall
-back to the base directory given when this skill was loaded. All four scripts print JSON, including for
-expected failures (`{"error": ..., "hint": ...}` with exit code 1), so read the output rather than
-guessing what a script would return. A stack trace means a bug in the script, not a bad argument.
+Every subcommand prints JSON, including for expected failures (`{"error": ..., "hint": ...}` with exit
+code 1) and for a mistyped command line, so read the output rather than guessing what it would return. A
+stack trace means a bug in the tool, not a bad argument.
 
-**Run them from the scratchpad**, not from anywhere inside the target repository, and pass absolute
-paths for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
+**Run it from the scratchpad**, not from anywhere inside the target repository, and pass absolute paths
+for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
 `global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root
-applies just as much when the working directory is several folders below it. A pinned SDK older than
-10.0.300 breaks `#:include`; a pinned version that is not installed fails outright with "A compatible
-.NET SDK was not found". Every script takes the repository path as an argument for this reason. The
-constraint applies only to these scripts; build the analyzer project itself from the repository, where
-its pinned SDK is the correct one.
+applies just as much when the working directory is several folders below it, and a pinned version that is
+not installed fails outright with "A compatible .NET SDK was not found". Every subcommand takes the
+repository path as an argument for this reason. The constraint applies only to the tool; build the
+analyzer project itself from the repository, where its pinned SDK is the correct one.
 
 ## Workflow
 
 ### Step 1: Detect conventions
 
-Run `FindConventions.cs` with `--path <repository>` and `--summary`, from the scratchpad, redirecting to
+Run `find-conventions` with `--path <repository>` and `--summary`, from the scratchpad, redirecting to
 a file there. Read the fields listed below; the rest of the JSON describes projects and resource groups
 the workflow does not touch, so skip it. Ask nothing in this step: collect what is undecided and put it
 in the single question round of Step 3.
@@ -186,18 +186,18 @@ Apply `customTags` only when required (`CompilationEnd`, `Unnecessary`, `NotConf
 
 ### Step 4: Allocate the ID
 
-Run `NextId.cs` with `--ids-file` and `--category <name>` (diagnostic) or `--suppression` (suppression).
+Run `next-id` with `--ids-file` and `--category <name>` (diagnostic) or `--suppression` (suppression).
 This step decides a value and writes nothing; every file edit belongs to Step 5.
 
 When Step 1 reported `diagnosticPrefix` as null, do not try `--category` at all: run
-`--prefix <PREFIX> --band <n>` straight away, using the prefix answered in Step 3. Without it the script
+`--prefix <PREFIX> --band <n>` straight away, using the prefix answered in Step 3. Without it the command
 returns `{"error": ..., "hint": ...}` and no ID, which is a normal outcome for a repository with no
-diagnostics yet, not a broken script.
+diagnostics yet, not a broken command.
 
 When the output has `"unresolvedCategory": true`, the category has no band yet: choose the next unused
 band digit and re-run with `--prefix <PREFIX> --band <n>`, then note that 5a must also write the
 `// <Category> (<PREFIX><n>xxx)` header. Once such a header exists, `--category <name>` alone is enough,
-because the script reads both the band and the prefix from it. Never renumber or reuse an existing value.
+because the command reads both the band and the prefix from it. Never renumber or reuse an existing value.
 
 ### Step 5: Apply the edits
 
@@ -211,7 +211,7 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
 - **5b. Categories class** (diagnostics only): add the constant when the category is new, to the class
   named by `diagnosticCategories.path`. When that is null, create `DiagnosticCategories.cs` next to the
   IDs file from `examples/DiagnosticCategories.cs`, matching the IDs class visibility.
-- **5c. Descriptor**: when documentation was requested, run `DocUrl.cs --doc <intended page path>` now
+- **5c. Descriptor**: when documentation was requested, run `doc-url --doc <intended page path>` now
   (it needs only the path, not the file) and pass the URL as `helpLinkUri`; omit the argument otherwise.
   Decide how the strings reach the descriptor, in this order (`references/descriptors.md`,
   "Localizable strings"):
@@ -247,7 +247,7 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
 - **5d. resx**: identify the resource group that holds diagnostic strings (the one already containing
   `*Title` / `*Message` entries; ask when several qualify). **Copy every culture file of that group to
   the scratchpad first**; the files may already carry uncommitted work, so `git checkout --` is not a
-  recovery path and must not be used. Then run `AddResxEntries.cs` **once per culture file**, each with
+  recovery path and must not be used. Then run `add-resx-entries` **once per culture file**, each with
   its own entries JSON in the scratchpad and `--ids-file` pointing at the IDs file edited in 5a. The
   neutral file (`Resources.resx`) is written in `resx[].neutralLanguage` (the project's
   `<NeutralLanguage>`, English only when that is null and the existing entries are English); every
@@ -296,7 +296,7 @@ into existing files; use `Write` only for new files.
 
 ### Step 6: Verify
 
-- Re-run `FindConventions.cs --summary` and confirm the new ID appears under `diagnosticIds.ids` /
+- Re-run `find-conventions --summary` and confirm the new ID appears under `diagnosticIds.ids` /
   `suppressionIds.ids`, and the resx report was `valid`.
 - Confirm the RS2000 or RS2008 observation from 5e happened and that the row now silences it.
 - Grep the target project for the new name: the IDs file, the descriptor, `SupportedDiagnostics` (or
@@ -341,7 +341,7 @@ files.
   IDs, and how real projects (StyleCop, xunit, Roslynator, Meziantou) share IDs with code-fix projects.
 - **`references/descriptors.md`** — DiagnosticDescriptor / SuppressionDescriptor patterns, text format
   rules (RS1031–RS1033), severity guidance, required `customTags`, source generator descriptors.
-- **`references/resources.md`** — resx entry naming and ordering, `AddResxEntries.cs` usage, Designer.cs
+- **`references/resources.md`** — resx entry naming and ordering, `add-resx-entries` usage, Designer.cs
   regeneration matrix.
 - **`references/analyzer-releases.md`** — AnalyzerReleases file format, Notes column convention, RS2000
   family.
@@ -360,12 +360,14 @@ files.
   tracking files.
 - **`examples/rule-doc-template.md`**, **`examples/rules-index-template.md`** — documentation templates.
 - **`examples/add-diagnostic.md`** — configuration file with every supported key.
-- **`examples/resx-entries.json`**, **`examples/resx-entries.ja.json`** — input format for `AddResxEntries.cs`, one file per culture.
+- **`examples/resx-entries.json`**, **`examples/resx-entries.ja.json`** — input format for `add-resx-entries`, one file per culture.
 
-### Scripts
+### Tool subcommands
 
-- **`scripts/FindConventions.cs`** — repository convention detection (JSON).
-- **`scripts/NextId.cs`** — next free ID in a category band or suppression sequence.
-- **`scripts/AddResxEntries.cs`** — ordered resx insertion with validation.
-- **`scripts/DocUrl.cs`** — documentation URL from the git remote or a template.
-- **`scripts/Common.cs`** — shared helpers included by the four entry points (not run directly).
+`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic <subcommand>`, see "The helper tool"
+above.
+
+- **`find-conventions`** — repository convention detection (JSON).
+- **`next-id`** — next free ID in a category band or suppression sequence.
+- **`add-resx-entries`** — ordered resx insertion with validation.
+- **`doc-url`** — documentation URL from the git remote or a template.

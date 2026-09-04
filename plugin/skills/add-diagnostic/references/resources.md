@@ -13,7 +13,7 @@
 
 ## Which files to edit
 
-1. Find the resource group of the target project: `FindConventions.cs` lists each group with its
+1. Find the resource group of the target project: `find-conventions` lists each group with its
    `baseName`, all culture files, the detected generator, and the resource class name. A project normally
    has one group (`Resources.resx` plus optional `Resources.ja.resx`, `Resources.de.resx`, ...). When a
    project has several groups, ask which one holds diagnostic strings, or pick the one that already
@@ -23,7 +23,7 @@
    `.ja` Japanese, `.de` German, `.fr` French, `.zh-Hans` Simplified Chinese. Keep the placeholders
    (`{0}`, `{1}`) and the quoting style identical across languages; translate the prose around them.
 
-   The neutral file's language is **not** assumed to be English. `FindConventions.cs` reports it as
+   The neutral file's language is **not** assumed to be English. `find-conventions` reports it as
    `resx[].neutralLanguage`, resolved in this order:
 
    | Source | Example |
@@ -58,20 +58,20 @@
 
 Entries are kept in **ID value order**, and within one diagnostic in the order
 Title → Message → Description (Justification alone for suppressions). Existing entries are left where
-they are; new entries go after the last entry whose ID sorts before them. `AddResxEntries.cs` resolves
+they are; new entries go after the last entry whose ID sorts before them. `add-resx-entries` resolves
 resource names to ID values through the IDs file and computes the insertion point; pass `--ids-file` so it
 can do that (pass the suppression IDs file when adding a Justification).
 
 ## Adding entries
 
-Because each culture file gets different text, run the script once per file with that file's own entries
+Because each culture file gets different text, run the command once per file with that file's own entries
 JSON:
 
 ```bash
-S="${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts"
-dotnet "$S/AddResxEntries.cs" -- --resx /repo/src/A/Resources.resx \
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.0 -- add-diagnostic"
+$T add-resx-entries --resx /repo/src/A/Resources.resx \
   --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.en.json
-dotnet "$S/AddResxEntries.cs" -- --resx /repo/src/A/Resources.ja.resx \
+$T add-resx-entries --resx /repo/src/A/Resources.ja.resx \
   --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.ja.json
 ```
 
@@ -81,7 +81,7 @@ identical in all of them, which for diagnostic strings it never is.
 Options: `--resx` (repeatable, or comma-separated), `--entries` (JSON array or path to a JSON file),
 `--ids-file`, `--force`, `--validate-only`.
 
-The script:
+The command:
 
 - preserves the file's BOM, line endings, indentation, and existing element order;
 - inserts `<data name="..." xml:space="preserve"><value>...</value></data>` at the computed position;
@@ -91,12 +91,12 @@ The script:
 - reports whether a sibling `*.Designer.cs` exists and lacks the new names (`designerStale`);
 - exits with code 1 when any file fails validation.
 
-Copy every culture file to the scratchpad before running the script. Read the JSON report; if `valid` is
+Copy every culture file to the scratchpad before running the command. Read the JSON report; if `valid` is
 false, restore from those copies and fix the cause before retrying. Never leave a broken resx behind, and
 never recover with `git checkout --`: a resx routinely holds uncommitted work that git would discard
 along with the failed insertion.
 
-For a one-off manual edit, insert the same XML by hand and run the script with `--validate-only` afterwards.
+For a one-off manual edit, insert the same XML by hand and run the command with `--validate-only` afterwards.
 
 ## Placeholder comments
 
@@ -137,19 +137,19 @@ next:
 | MSBuild `GenerateResource` with `StronglyTypedFileName` / `StronglyTypedClassName` metadata, or `Generator="MSBuild:Compile"` | Generated at build time. | Nothing. |
 | Unknown (no Designer file, no generator metadata) | Possibly the project reads resources through a custom `ResourceManager` wrapper. | Look at how existing descriptors reference resources and mirror it; if `nameof(Resources.X)` is used and no generator is found, ask the user how the class is produced. |
 
-`FindConventions.cs` sets `requiresVisualStudioRegeneration` to `true` for the first row. Always
+`find-conventions` sets `requiresVisualStudioRegeneration` to `true` for the first row. Always
 mention this in the final summary when it applies; it is the one step the skill cannot do itself.
 
 ## Editing rules for the XML
 
 - Keep `xml:space="preserve"` on every `data` element; Visual Studio adds it and the ResX reader relies on
   it for leading/trailing whitespace.
-- Escape `<`, `>`, `&` in values (the script does this through the XML DOM).
+- Escape `<`, `>`, `&` in values (the tool does this through the XML DOM).
 - Add a `<comment>` to every entry in the **neutral** file whose text contains a placeholder; see
   "Placeholder comments" below. Leave satellite files without comments, and do not add comments to
   entries that have no placeholder.
 - Do not touch the `resheader` elements or any `metadata`/`assembly` nodes.
 - Keep the declaration `<?xml version="1.0" encoding="utf-8"?>` and the UTF-8 BOM if the file has one.
-- The script reproduces the file's existing shape, including the absence of a trailing newline after
+- The tool reproduces the file's existing shape, including the absence of a trailing newline after
   `</root>`. That is deliberate: matching Visual Studio's output keeps the diff to the added entries,
   even when `.editorconfig` sets `insert_final_newline`.

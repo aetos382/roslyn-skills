@@ -1,6 +1,8 @@
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace RoslynSkills.AddDiagnostic.Scripts.Tests;
+namespace Aetos.RoslynSkills.Tools.Tests;
 
 [TestClass]
 public sealed class ConfigTests(TestContext testContext) : IDisposable
@@ -142,7 +144,7 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
 
     /// <summary>
     /// Guarantees a malformed block is reported with its position instead of being silently ignored: a key
-    /// lost to a lenient parser looks exactly like a key never written, and the scripts would then describe
+    /// lost to a lenient parser looks exactly like a key never written, and the tool would then describe
     /// conventions the repository does not follow.
     /// </summary>
     [TestMethod]
@@ -207,8 +209,8 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     }
 
     /// <summary>
-    /// Guarantees the nested lookup reads the categories map, which is how NextId.cs resolves a category to
-    /// a band when the IDs file has no header for it yet.
+    /// Guarantees the nested lookup reads the categories map, which is how the next-id command resolves a
+    /// category to a band when the IDs file has no header for it yet.
     /// </summary>
     [TestMethod]
     public void NestedLookupReadsTheCategoriesMap()

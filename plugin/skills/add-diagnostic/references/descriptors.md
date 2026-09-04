@@ -34,7 +34,7 @@ Before writing a descriptor, read one existing descriptor in the target project 
 | Direct `new DiagnosticDescriptor(...)` / target-typed `new(...)` | Same, with the same argument style (named vs positional). |
 | Helper such as `DescriptorFactory.Create(...)`, `CreateDescriptor(...)`, `Rule(...)` | Call the helper with the same arguments the neighbours use. |
 | Descriptors collected in a central `Descriptors` class (xunit.analyzers style) | Add the property there instead of in the analyzer class, and reference it from the analyzer. |
-| `LocalizableResourceString` with a different resource class name (`Strings`, `SR`, `AnalyzerResources`) | Use that class; `FindConventions.cs` reports it as `resourceClass`. |
+| `LocalizableResourceString` with a different resource class name (`Strings`, `SR`, `AnalyzerResources`) | Use that class; `find-conventions` reports it as `resourceClass`. |
 | `Resources.ResourceManager` accessed through a helper (`ResourceHelper.GetLocalizable(...)`) | Use the helper. |
 | No descriptor exists yet, but the resource class has a hand-written partial (`localizableStringHelper` / `localizableStringProperties`) | Follow "Localizable strings" below. |
 | Initialising `SupportedDiagnostics` | Use `ImmutableArray.Create(...)`. A collection expression `[ a, b ]` needs `LangVersion` 12+ **and** a `System.Collections.Immutable` with `CollectionBuilderAttribute`, which a bare `netstandard2.0` project may not have. Switch only when the project's analyzers ask (IDE0303) and it compiles. |
@@ -42,7 +42,7 @@ Before writing a descriptor, read one existing descriptor in the target project 
 ## Localizable strings
 
 Where the `LocalizableResourceString` for title / message / description is built depends on what the
-resource class already offers. `FindConventions.cs` reports, per resx group, `localizableStringHelper`
+resource class already offers. `find-conventions` reports, per resx group, `localizableStringHelper`
 (method, `accessibility`, file) and `localizableStringProperties` (existing properties, `style`,
 `nestedClass`, file). Pick the first matching row:
 
@@ -124,7 +124,7 @@ the opt-in status in the documentation.
 
 ### helpLinkUri
 
-Set to the full URL of the rule's documentation file (from `DocUrl.cs`) when documentation is
+Set to the full URL of the rule's documentation file (from `doc-url`) when documentation is
 created. Omit the argument when it is not. Do not point at a page that does not exist.
 
 ### customTags

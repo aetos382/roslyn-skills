@@ -13,10 +13,13 @@ The skill does not implement analysis logic, code fixes, or tests; it prepares e
 
 ## Prerequisites
 
-- .NET SDK 10.0.300 or later. The skill's helper tools are file-based C# apps (`dotnet Script.cs`), so
-  nothing else needs to be installed on Windows, macOS, or Linux. They run from a temporary directory
-  and take repository paths as arguments, so a `global.json` at your repository root, which `dotnet`
-  applies to every folder beneath it, cannot pin them to an SDK that is older or not installed.
+- .NET SDK 10.0 or later. The skill's helpers live under the `add-diagnostic` command group of the
+  [`Aetos.RoslynSkills.Tools`](https://www.nuget.org/packages/Aetos.RoslynSkills.Tools) .NET tool, which
+  the skill runs from NuGet.org with `dotnet tool exec` at a pinned version, so nothing has to be
+  installed on Windows, macOS, or Linux. One package covers every skill in the plugin: a new skill adds a
+  command group rather than another package. It runs from a temporary directory and takes repository paths as
+  arguments, so a `global.json` at your repository root, which `dotnet` applies to every folder beneath
+  it, cannot pin it to an SDK that is not installed.
 - `git` on `PATH` (used to derive the documentation URL from the `origin` remote). `gh` is used when
   available to look up the default branch.
 
@@ -96,7 +99,8 @@ roslyn-skills/
 ├── .claude-plugin/
 │   └── marketplace.json       # makes this repository installable as a marketplace
 ├── global.json                # selects the MTP runner for dotnet test; pins no SDK
-├── README.md
+├── Directory.Build.props      # target framework and lock-file settings shared by both projects
+├── README.md                  # also the NuGet package's readme
 ├── plugin/                    # what an install delivers, and nothing else
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -105,26 +109,28 @@ roslyn-skills/
 │       └── add-diagnostic/
 │           ├── SKILL.md
 │           ├── references/    # conventions, descriptor patterns, resx, release tracking, docs
-│           ├── examples/      # canonical files and templates
-│           └── scripts/       # FindConventions.cs, NextId.cs, AddResxEntries.cs, DocUrl.cs, Common.cs
-└── tests/                     # unit tests for the scripts' shared helpers
+│           └── examples/      # canonical files and templates
+├── src/                       # the Aetos.RoslynSkills.Tools tool the skills invoke
+└── tests/                     # unit tests for the tool
 ```
 
 `marketplace.json` names `plugin/` as the plugin's source, so an install copies that directory alone into
-the plugin cache and the tests never reach it. `CLAUDE_PLUGIN_ROOT` therefore points at `plugin/`, which is
-why the skill's own paths start at `skills/`. The license is duplicated into `plugin/` because that copy is
-the only one an install carries.
+the plugin cache; the tool and its tests never reach it. The license is duplicated into `plugin/` because
+that copy is the only one an install carries.
+
+The skill pins the tool's exact version, so a release bumps `plugin/.claude-plugin/plugin.json`, the
+`<Version>` in `src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj`, and the version written in
+`SKILL.md` and `references/*.md` together. Pushing a `v*` tag publishes the package to NuGet.org.
 
 ## Tests
 
 ```bash
-dotnet test tests/RoslynSkills.AddDiagnostic.Scripts.Tests
+dotnet test tests/Aetos.RoslynSkills.Tools.Tests
 ```
 
-The scripts are file-based apps with no project, so the test project compiles `Common.cs` in directly
-rather than referencing it. What is covered is the parsing the scripts do on input they do not control:
-the settings file, the command line, the ID constants and band headers, and the file-shape detection that
-decides which directories are skipped.
+The test project references the tool project and sees its internals through `InternalsVisibleTo`. What is
+covered is the parsing the tool does on input it does not control: the settings file, the command line,
+the ID constants and band headers, and the file-shape detection that decides which directories are skipped.
 
 ## License
 

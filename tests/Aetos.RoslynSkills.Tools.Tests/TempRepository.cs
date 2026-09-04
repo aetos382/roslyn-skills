@@ -1,6 +1,8 @@
+using Aetos.RoslynSkills.Tools.AddDiagnostic;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace RoslynSkills.AddDiagnostic.Scripts.Tests;
+namespace Aetos.RoslynSkills.Tools.Tests;
 
 /// <summary>A throwaway directory standing in for a repository under inspection.</summary>
 internal sealed class TempRepository : IDisposable

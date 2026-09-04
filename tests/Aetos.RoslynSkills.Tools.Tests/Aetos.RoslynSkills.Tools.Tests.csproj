@@ -1,0 +1,11 @@
+<Project Sdk="MSTest.Sdk/4.4.0">
+
+  <PropertyGroup>
+    <RootNamespace>Aetos.RoslynSkills.Tools.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Aetos.RoslynSkills.Tools/Aetos.RoslynSkills.Tools.csproj" />
+  </ItemGroup>
+
+</Project>
