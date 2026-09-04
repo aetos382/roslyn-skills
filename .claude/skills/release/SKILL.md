@@ -75,8 +75,11 @@ gh run watch <id> --exit-status
 
 ## 6. Report
 
-On success, print the draft release's URL (`gh release view "v$VERSION" --json url`) and tell the user that
-publishing it is what sends the package to NuGet.org, irreversibly. Do not publish it.
+On success, point the user at the repository's releases page,
+<https://github.com/aetos382/roslyn-skills/releases>, where the draft is listed, and tell them that
+publishing it is what sends the package to NuGet.org, irreversibly. Do not publish it, and do not quote the
+draft's own URL: a draft carries no tag, so `gh release view` reports an `untagged-<hash>` address that
+stops resolving the moment the release is published.
 
 On failure, say which step failed and stop. The bump commit is already on `main` by then, which is expected:
 `main` pins a version that is not on NuGet.org yet from the moment of the push until the release is

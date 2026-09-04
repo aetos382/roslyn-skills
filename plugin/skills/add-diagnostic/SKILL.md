@@ -65,6 +65,13 @@ return. Exit code 2 is a bug in the tool rather than a bad argument: the same tw
 `"unexpected": true`, `exception` and `stackTrace`. Report it and stop; re-running the same command will
 not help.
 
+A failure that names the package rather than the subcommand — `Aetos.RoslynSkills.Tools` could not be
+resolved, or no version matches the pin — comes from NuGet before the tool ever starts, so it arrives as
+plain SDK text rather than the JSON above. When the pinned version was published minutes earlier that is
+the download endpoint still catching up, and retrying after a few minutes succeeds; it is the one failure
+here worth repeating verbatim. Being absent from the nuget.org website or from `dotnet package search` is
+a separate index that lags far longer and never affects `dotnet tool exec`.
+
 **Run it from the scratchpad**, not from anywhere inside the target repository, and pass absolute paths
 for `--path`, `--ids-file`, `--resx`, and `--entries`. `dotnet` resolves its SDK from the first
 `global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root
