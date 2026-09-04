@@ -68,7 +68,7 @@ suppression is not needed by default. Behaviour:
 `helpLinkUri` must be the permanent URL of the page on the default branch. Use the tool:
 
 ```bash
-dotnet tool exec Aetos.RoslynSkills.Tools@0.1.2 -- add-diagnostic doc-url \
+dotnet tool exec Aetos.RoslynSkills.Tools@0.1.3 -- add-diagnostic doc-url \
   --doc docs/rules/CTS1001.md --path /absolute/path/to/the/repository
 ```
 

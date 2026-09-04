@@ -32,7 +32,7 @@ downloads. From Bash:
 
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.2 -- add-diagnostic"   # not dnx, see below
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.3 -- add-diagnostic"   # not dnx, see below
 R="/absolute/path/to/the/repository"
 
 $T find-conventions --path "$R" --summary > conventions.json    # then read that file
@@ -391,7 +391,7 @@ files.
 
 ### Tool subcommands
 
-`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.2 -- add-diagnostic <subcommand>`, see "The helper tool"
+`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.3 -- add-diagnostic <subcommand>`, see "The helper tool"
 above.
 
 - **`find-conventions`** — repository convention detection (JSON).
