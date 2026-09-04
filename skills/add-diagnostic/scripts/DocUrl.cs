@@ -9,7 +9,7 @@
 // absolute path is accepted and made relative to the repository root; one pointing outside it is an error
 // rather than a plausible-looking broken link.
 //
-// Template resolution: --template, then `docUrlTemplate` in .claude/roslyn-skills.md, then
+// Template resolution: --template, then `docUrlTemplate` in .claude/roslyn-skills/add-diagnostic.md, then
 // https://github.com/{owner}/{repo}/blob/{branch}/{path} when origin is on github.com.
 // Owner/repo come from the origin remote; branch from origin/HEAD, then `gh repo view`, then the current branch.
 
@@ -34,6 +34,8 @@ else
 }
 
 var config = new Config(root);
+if (config.Error is { } configError)
+    return Json.Fail(configError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
 var git = GitInfo.Read(root);
 
 var template = cli.Get("template") ?? config.Get("docUrlTemplate") ?? git.DefaultTemplate;

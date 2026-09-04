@@ -17,13 +17,12 @@ var suppression = cli.Has("suppression");
 var text = File.Exists(idsFile) ? File.ReadAllText(idsFile) : "";
 var all = IdConst.Parse(text);
 
+var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!));
+if (cfg.Error is { } cfgError)
+    return Json.Fail(cfgError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
+
 // Prefix: explicit, else config, else inferred from existing IDs, else from band headers (`// Design (ABC1xxx)`).
-var prefix = cli.Get("prefix");
-if (prefix is null)
-{
-    var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!));
-    prefix = cfg.Get("diagnosticPrefix");
-}
+var prefix = cli.Get("prefix") ?? cfg.Get("diagnosticPrefix");
 if (prefix is null && all.Count > 0)
 {
     var letters = all.GroupBy(i => i.Letters).OrderByDescending(g => g.Count()).First().Key;
@@ -44,8 +43,7 @@ if (band is null && category is not null && bands.TryGetValue(category, out var 
 if (band is null && category is not null && !suppression)
 {
     // Fall back to the config's categories map.
-    var cfg = new Config(Repo.GetRoot(Path.GetDirectoryName(Path.GetFullPath(idsFile))!));
-    if (cfg.Maps.TryGetValue("categories", out var map) && map.TryGetValue(category, out var s) && int.TryParse(s, out var cb)) band = cb;
+    if (cfg.Get("categories", category) is { } s && int.TryParse(s, out var cb)) band = cb;
 }
 if (suppression) band = null;
 

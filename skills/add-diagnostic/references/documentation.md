@@ -76,7 +76,8 @@ dotnet "${CLAUDE_PLUGIN_ROOT}/skills/add-diagnostic/scripts/DocUrl.cs" -- \
 that is not absolute. An absolute path is relativized against the repository root, and one outside the
 repository is refused rather than pasted into the URL.
 
-Resolution order for the template: `--template` argument → `docUrlTemplate` in `.claude/roslyn-skills.md`
+Resolution order for the template: `--template` argument → `docUrlTemplate` in
+`.claude/roslyn-skills/add-diagnostic.md`
 → `https://github.com/{owner}/{repo}/blob/{branch}/{path}` when `origin` points at github.com. Owner and
 repo come from the `origin` remote; branch from `origin/HEAD`, then `gh repo view`, then the current
 branch. The script throws when the host is not GitHub and no template is configured; in that case ask the
@@ -87,10 +88,16 @@ Verify the URL against the existing descriptors: if they use a different base (a
 links, a tag instead of a branch), the repository has its own convention; follow it and record it as
 `docUrlTemplate`.
 
-## Configuration file: `.claude/roslyn-skills.md`
+## Configuration file: `.claude/roslyn-skills/add-diagnostic.md`
 
-A committed file with YAML front matter that pins conventions detection cannot infer or that the user
-wants to override. Every key is optional. See `examples/roslyn-skills.md`.
+A committed Markdown file whose first fenced **`json`** block pins conventions detection cannot infer or
+that the user wants to override. `//` comments and trailing commas are allowed, so the block can explain
+its own keys. Every key is optional. See `examples/add-diagnostic.md`. The directory is the plugin name and
+the file is the skill name, so a plugin with more skills keeps their settings side by side.
+
+A malformed block is an error, not a fallback: the scripts report `{"error": ..., "hint": ...}` with the
+line number and exit 1 instead of carrying on with the file ignored. A mistyped key would otherwise look
+exactly like a missing one, and the report would describe conventions the repository does not follow.
 
 | Key | Meaning |
 |-----|---------|
@@ -103,10 +110,12 @@ wants to override. Every key is optional. See `examples/roslyn-skills.md`.
 | `docUrlTemplate` | URL template with `{owner}`, `{repo}`, `{branch}`, `{path}`. |
 | `idSharing` | `AnalyzerProject`, `LinkedFile`, `SharedProject`, or `SharedFile` (see `id-conventions.md`). Usually left out; detection reports it. |
 
-The markdown body below the front matter holds free-form notes for the skill (for example the name of a
-descriptor helper method). Read it and follow it.
+Everything outside the `json` block is free-form notes for the skill (for example the name of a descriptor
+helper method). Read it and follow it. A file with no `json` block at all is notes only, which is a valid
+way to use it.
 
-Create the file only when a decision was made that detection could not reproduce next time (a new prefix,
-a new band mapping, a non-GitHub URL template, an unusual docs layout). Tell the user the file was created
-and that it should be committed. Detection alone is enough for repositories that already follow the
-conventions.
+Create the file only when a decision was made that detection could not reproduce next time (a non-GitHub
+URL template, a docs layout the scan misreads, a descriptor helper worth naming in the notes). A new prefix
+or a new band mapping is **not** such a decision: the `// <Category> (<PREFIX><n>xxx)` header in the IDs
+file carries both, and detection reads them back from it. Tell the user the file was created and that it
+should be committed. Detection alone is enough for repositories that already follow the conventions.

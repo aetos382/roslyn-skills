@@ -72,13 +72,13 @@ therefore end up adjacent. With four digits:
 Rules:
 
 1. The band-to-category mapping lives in comment headers in the IDs file (format below) and optionally in
-   `.claude/roslyn-skills.md` under `categories:`. Read the mapping from there; do not invent a new
-   mapping when one exists.
+   `.claude/roslyn-skills/add-diagnostic.md` under `"categories"`. Read the mapping from there; do not
+   invent a new mapping when one exists.
 2. A new diagnostic takes the next free number **inside its category's band**
    (`NextId.cs --category <name>` computes it). Gaps are fine; do not fill holes left by
    removed rules.
 3. A new category takes the next unused band. Add its comment header to the IDs file, its constant to the
-   categories class, and (if the config file exists) its entry under `categories:`.
+   categories class, and (if the config file exists) its entry under `"categories"`.
 4. If the repository does not use bands (numbers are sequential with no comment headers), keep doing
    what it does: next number overall, and place the constant next to related ones.
 

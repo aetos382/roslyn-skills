@@ -10,7 +10,8 @@
 //
 // Output covers: projects (analyzer / codefix / generator / test), diagnostic and suppression ID files,
 // resx groups (with generator detection), AnalyzerReleases files, rule documentation, the optional
-// .claude/roslyn-skills.md config, git remote information, and how IDs are shared with the code-fix project.
+// .claude/roslyn-skills/add-diagnostic.md config, git remote information, and how IDs are shared with the
+// code-fix project.
 
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -21,6 +22,8 @@ var root = Repo.GetRoot(cli.Get("path") ?? ".");
 // examples/ would otherwise be reported as the repository's diagnostics.
 var vendoredPlugins = Repo.FindVendoredPlugins(root);
 var config = new Config(root);
+if (config.Error is { } configError)
+    return Json.Fail(configError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
 
 // ---------------------------------------------------------------------------
 // Projects
@@ -570,6 +573,7 @@ Json.Print(new JsonObject
     ["docs"] = docs,
     ["git"] = gitJson,
 });
+return 0;
 
 /// <summary>One evaluated MSBuild item: its identity, resolved path, and metadata.</summary>
 sealed record MsBuildItem(string Identity, string? FullPath, Dictionary<string, string> Metadata);

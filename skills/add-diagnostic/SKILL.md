@@ -284,7 +284,8 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
   `LinkedFile`, then add the `<ProjectReference>` or the linked `<Compile>` item to the code-fix project
   and set the IDs class visibility accordingly. When `diagnosticIdsProject` is null the IDs file belongs
   to no project, so add the linked `<Compile>` item to each side (`SharedFile`) instead of moving it.
-- **5h. Config file**: create or update `.claude/roslyn-skills.md` (`examples/roslyn-skills.md`) only
+- **5h. Config file**: create or update `.claude/roslyn-skills/add-diagnostic.md`
+  (`examples/add-diagnostic.md`, creating the directory when missing) only
   when a decision was made that detection cannot reproduce next time: a non-GitHub URL template, a docs
   layout the scan misreads, a descriptor helper worth naming in the notes. A new prefix or a new band is
   **not** such a decision — 5a writes the `// <Category> (<PREFIX><n>xxx)` header, and detection reads
@@ -345,7 +346,7 @@ files.
 - **`references/analyzer-releases.md`** — AnalyzerReleases file format, Notes column convention, RS2000
   family.
 - **`references/documentation.md`** — documentation layout, page and index templates, URL resolution,
-  and the `.claude/roslyn-skills.md` configuration schema.
+  and the `.claude/roslyn-skills/add-diagnostic.md` configuration schema.
 
 ### Examples
 
@@ -358,7 +359,7 @@ files.
 - **`examples/AnalyzerReleases.Shipped.md`**, **`examples/AnalyzerReleases.Unshipped.md`** — release
   tracking files.
 - **`examples/rule-doc-template.md`**, **`examples/rules-index-template.md`** — documentation templates.
-- **`examples/roslyn-skills.md`** — configuration file with every supported key.
+- **`examples/add-diagnostic.md`** — configuration file with every supported key.
 - **`examples/resx-entries.json`**, **`examples/resx-entries.ja.json`** — input format for `AddResxEntries.cs`, one file per culture.
 
 ### Scripts
