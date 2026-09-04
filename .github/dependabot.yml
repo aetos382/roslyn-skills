@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  # Both projects are found from the root. Dependabot rewrites packages.lock.json along with the csproj,
+  # which it has to: CI restores with RestoreLockedMode=true, so a pull request that left the lock file
+  # behind would fail before it built anything.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Microsoft.CodeAnalysis.Analyzers is referenced only to override the prerelease the other Roslyn
+      # packages ask for, so it has to move in the same pull request as them or the pin is left behind
+      # naming a version older than what they request.
+      roslyn:
+        patterns:
+          - Microsoft.CodeAnalysis.*
+
+  # Actions are pinned to a commit with the version in a trailing comment; Dependabot updates both parts.
+  # One group, because a workflow that only half-updates is not worth a second review.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

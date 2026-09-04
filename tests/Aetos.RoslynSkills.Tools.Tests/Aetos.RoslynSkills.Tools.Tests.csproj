@@ -1,4 +1,5 @@
-<Project Sdk="MSTest.Sdk/4.4.0">
+<!-- The version lives in global.json's msbuild-sdks, where Dependabot can see it. -->
+<Project Sdk="MSTest.Sdk">
 
   <PropertyGroup>
     <RootNamespace>Aetos.RoslynSkills.Tools.Tests</RootNamespace>
