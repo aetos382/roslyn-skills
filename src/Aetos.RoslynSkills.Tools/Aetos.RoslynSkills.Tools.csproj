@@ -4,10 +4,11 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Aetos.RoslynSkills.Tools</RootNamespace>
     <!--
-      Culture detection splits Resources.ja.resx on a real CultureInfo lookup, and under invariant
-      globalization every name resolves, which would make Resources.foo.resx a culture file too.
+      Nothing here is culture-sensitive: every comparison and sort is ordinal, and the culture suffix of a
+      resx file is matched against a list rather than looked up (see ResxName). So the answers cannot depend
+      on the host's globalization data, and there is no reason to carry it.
     -->
-    <InvariantGlobalization>false</InvariantGlobalization>
+    <InvariantGlobalization>true</InvariantGlobalization>
     <!--
       Output is read by an agent, and mixing System.CommandLine's localized parse errors into the JSON
       would only make them harder to match. Shipping no satellite assemblies keeps every message English.

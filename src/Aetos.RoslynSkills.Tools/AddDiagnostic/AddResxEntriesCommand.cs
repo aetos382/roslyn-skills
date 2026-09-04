@@ -219,8 +219,8 @@ internal static class AddResxEntriesCommand
                 problems.Add("XML parse failed: " + ex.Message);
             }
 
-            var stem = Regex.Replace(Path.GetFileNameWithoutExtension(full), @"\.[a-z]{2,3}(?:-[A-Za-z0-9]+)*$", "");
-            var designer = Path.Combine(Path.GetDirectoryName(full)!, stem + ".Designer.cs");
+            // A satellite has no Designer of its own; the neutral file's is the one that goes stale.
+            var designer = Path.Combine(Path.GetDirectoryName(full)!, ResxName.Split(full).Base + ".Designer.cs");
             var designerStale = false;
             if (File.Exists(designer) && added.Count > 0)
             {

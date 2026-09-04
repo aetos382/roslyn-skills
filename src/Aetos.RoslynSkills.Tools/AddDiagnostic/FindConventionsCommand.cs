@@ -265,7 +265,7 @@ internal static class FindConventionsCommand
         // resx groups
         // ---------------------------------------------------------------------------
         var resxGroups = new JsonArray();
-        foreach (var g in Repo.Files(root, "*.resx").GroupBy(f => (Dir: Path.GetDirectoryName(f)!, Base: SplitCulture(f).Base)).OrderBy(g => g.Key.Dir + g.Key.Base, StringComparer.Ordinal))
+        foreach (var g in Repo.Files(root, "*.resx").GroupBy(f => (Dir: Path.GetDirectoryName(f)!, Base: ResxName.Split(f).Base)).OrderBy(g => g.Key.Dir + g.Key.Base, StringComparer.Ordinal))
         {
             var dir = g.Key.Dir;
             var baseFile = Path.Combine(dir, g.Key.Base + ".resx");
@@ -330,7 +330,7 @@ internal static class FindConventionsCommand
                 ["directory"] = Repo.Rel(root, dir),
                 ["project"] = owner?.Name,
                 ["files"] = Json.Array(files.Select(f => Repo.Rel(root, f))),
-                ["cultures"] = Json.Array(files.Select(f => SplitCulture(f).Culture).OrderBy(c => c, StringComparer.Ordinal)),
+                ["cultures"] = Json.Array(files.Select(f => ResxName.Split(f).Culture).OrderBy(c => c, StringComparer.Ordinal)),
                 ["baseFileExists"] = File.Exists(baseFile),
                 ["designerFile"] = File.Exists(designer) ? Repo.Rel(root, designer) : null,
                 ["generator"] = generator,
@@ -565,18 +565,6 @@ internal static class FindConventionsCommand
             ["git"] = gitJson,
         });
         return 0;
-    }
-
-    private static (string Base, string Culture) SplitCulture(string fileName)
-    {
-        var stem = Path.GetFileNameWithoutExtension(fileName);
-        var m = Regex.Match(stem, @"^(?<base>.+)\.(?<culture>[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$");
-        if (m.Success)
-        {
-            try { _ = System.Globalization.CultureInfo.GetCultureInfo(m.Groups["culture"].Value); return (m.Groups["base"].Value, m.Groups["culture"].Value); }
-            catch { }
-        }
-        return (stem, "");
     }
 
     private sealed record ProjectInfo(
