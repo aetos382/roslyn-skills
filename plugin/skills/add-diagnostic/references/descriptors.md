@@ -31,7 +31,7 @@ A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no i
 
 Write the explicit `new DiagnosticDescriptor(...)` rather than a target-typed `new(...)`, and `ImmutableArray.Create(...)` rather than a collection expression.
 Both shorter forms depend on the project — `LangVersion`, a `System.Collections.Immutable` new enough to carry `CollectionBuilderAttribute`, possibly a polyfill package — and detection cannot see all of that.
-The conservative form compiles either way, and where the repository wants the other one its own build says so, as IDE0090 or IDE0303, which SKILL.md 5e then fixes.
+The conservative form compiles either way, and where the repository wants the other one its own build says so, as IDE0090 or IDE0303, which SKILL.md 6e then fixes.
 This applies to new code only: an existing property or descriptor is matched, never rewritten.
 
 ## Follow the repository's existing pattern
@@ -90,7 +90,7 @@ Do not implement the analysis; that is a separate task.
 ### title, messageFormat, description
 
 All three take a `LocalizableString`, and `string` converts to one implicitly, so both forms compile: plain literals in the constructor, or `LocalizableResourceString` instances pointing at resx entries named `{Name}Title`, `{Name}Message`, `{Name}Description`.
-Which one a new descriptor uses is not a judgement call — SKILL.md Step 3 "Where the strings live" settles it from what the project already does, and asks only when the project has no descriptor at all.
+Which one a new descriptor uses is not a judgement call — SKILL.md Step 4 "Where the strings live" settles it from what the project already does, and asks only when the project has no descriptor at all.
 The content rules below hold for either form.
 Content guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
 

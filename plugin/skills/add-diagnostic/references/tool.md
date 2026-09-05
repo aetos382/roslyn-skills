@@ -24,6 +24,7 @@ Only `--doc` is repository-relative, because it becomes part of a URL; everythin
 ## Where to run it
 
 **Run it from the scratchpad**, not from anywhere inside the target repository.
+Create it once and keep its absolute path in the run's notes, because the variable holding it does not survive to the next call either, and an empty one turns `cd` into a no-op that leaves the tool running wherever the previous call stopped.
 `dotnet` resolves its SDK from the first `global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root applies just as much when the working directory is several folders below it, and a pinned version that is not installed fails outright with "A compatible .NET SDK was not found".
 Every subcommand takes the repository path as an argument for this reason.
 The constraint applies only to the tool; build the analyzer project itself from the repository, where its pinned SDK is the correct one.
@@ -34,13 +35,14 @@ Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow
 `find-conventions` already does this internally.
 The switch is spelled `-nodeReuse:false` or `-nr:false`; `/node-reuse:false` is rejected with MSB1001.
 
-Export `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033` once, before the first command, so every `dotnet` invocation answers in English.
+Export `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033` at the top of **every** call that runs `dotnet`, not once at the start: each Bash call is a fresh shell that keeps the working directory and nothing else, so an export made in an earlier call is gone by the next one.
 The SDK and MSBuild otherwise speak the machine's language, and these documents name failures — MSB1001, CS0117, IDE0090, the NuGet codes below — in English only, so a localized build log is one the workflow cannot match against anything written here.
 The first covers the CLI, the second the MSBuild engine and the compilers it starts; the tool sets both for the processes it starts itself, which does not reach the commands the workflow runs.
 
 ## What the output promises
 
 Every subcommand prints JSON on stdout, including for expected failures (`{"error": ..., "hint": ...}` with exit code 1) and for a mistyped command line, so read the output rather than guessing what it would return.
+Paths in that JSON are repository-relative, so prefix the repository root before passing one back to a command or opening it; only `--doc` takes a relative path.
 Exit code 2 is a bug in the tool rather than a bad argument: the same two fields plus `"unexpected": true`, `exception` and `stackTrace`.
 Report it and stop; re-running the same command will not help.
 

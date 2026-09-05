@@ -1,8 +1,8 @@
 ---
 name: add-diagnostic
-description: This skill should be used when the user asks to "add a diagnostic", "add a new rule", "add an analyzer rule", "create a DiagnosticDescriptor", "add a diagnostic ID", "register a new diagnostic", "add a suppression", "add a DiagnosticSuppressor", "診断を追加", or describes a new warning, error, or suppression a Roslyn analyzer, source generator, or suppressor should report. Adds the ID constant, descriptor, its strings as resx entries or literals, AnalyzerReleases.Unshipped.md row, and optional rule docs following repository conventions. Not for implementing analysis logic, code fixes, or tests.
+description: This skill should be used when the user asks to "add a diagnostic", "add a new rule", "add an analyzer rule", "create a DiagnosticDescriptor", "add a diagnostic ID", "register a new diagnostic", "add a suppression", "add a DiagnosticSuppressor", "診断を追加", "警告を追加", "アナライザーにルールを追加", "サプレッサーを追加", or describes a new warning, error, or suppression a Roslyn analyzer, source generator, or suppressor should report. Adds the ID constant, descriptor, its strings as resx entries or literals, AnalyzerReleases.Unshipped.md row, and optional rule docs following repository conventions. Not for implementing analysis logic, code fixes, or tests.
 argument-hint: <what the diagnostic should report, in plain language>
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, TodoWrite
 ---
 
 # Add a Diagnostic
@@ -14,7 +14,7 @@ The deliverable is a consistent set of edits:
 |----------|------------|-------------|
 | ID constant in the IDs file | `DiagnosticIds.cs` | `SuppressionIds.cs` |
 | Descriptor in the reporting class | `DiagnosticDescriptor` + `SupportedDiagnostics` | `SuppressionDescriptor` + `SupportedSuppressions` |
-| Strings, as literals or resx entries in every culture file (Step 3) | `{Name}Title`, `{Name}Message`, `{Name}Description` | `{Name}Justification` |
+| Strings, as literals or resx entries in every culture file (Step 4) | `{Name}Title`, `{Name}Message`, `{Name}Description` | `{Name}Justification` |
 | `AnalyzerReleases.Unshipped.md` row | yes | no |
 | Documentation page + index row | optional (drives `helpLinkUri`) | only if the repo already documents suppressions |
 
@@ -27,13 +27,16 @@ The four helpers live under the `add-diagnostic` command group of the `Aetos.Ros
 It needs the .NET 10 SDK or later.
 `find-conventions` runs `dotnet msbuild` once per project, in parallel, so project data comes from a real evaluation rather than from reading XML: custom `.props`/`.targets`, central package management and conditions are all resolved.
 Expect a second or two on a small repository, plus a few seconds on the first run while the tool package downloads.
-From Bash:
+From Bash, where each call starts a fresh shell:
 
 ```bash
-cd "$SCRATCH"                                       # working directory: outside the repository
+# Preamble — repeat it at the top of every Bash call that runs the tool or a build.
+# The working directory survives between calls; variables and exports do not.
 export DOTNET_CLI_UI_LANGUAGE=en VSLANG=1033        # English output from every dotnet command
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic"   # not dnx, keep the --
+S="/absolute/path/to/the/scratch/directory"         # created once: S="$(mktemp -d)"; echo "$S"
 R="/absolute/path/to/the/repository"
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic"   # not dnx, keep the --
+cd "$S"                                             # never run the tool from inside $R
 
 $T find-conventions --path "$R" --summary > conventions.json    # then read that file
 $T next-id --ids-file "$R/src/X/DiagnosticIds.cs" --category Usage
@@ -44,20 +47,26 @@ $T add-resx-entries --ids-file "$R/src/X/DiagnosticIds.cs" --resx "$R/src/X/Reso
 $T doc-url --doc docs/rules/ABC1001.md --path "$R"             # --doc stays repository-relative
 ```
 
-Type it as written: the pin, the `--`, `dotnet` rather than `dnx`, absolute paths for everything but `--doc`, and the scratchpad as the working directory.
+Create the scratch directory once, at the start of the run, and keep its absolute path in the report of every step that writes there; `$S` has to be spelled out again in each later call, and an unset `$S` turns `cd "$S"` into a no-op that leaves the tool running inside the repository, which is exactly what the scratchpad exists to prevent.
+The same holds for the two exports: a `dotnet build` in a later call without them answers in the machine's language, and these documents name failures (MSB1001, CS0117, IDE0090, the `NU####` codes) in English only.
+
+Type the commands as written: the pin, the `--`, `dotnet` rather than `dnx`, absolute paths for everything but `--doc`, and the scratchpad as the working directory.
 Add `-nodeReuse:false` to every `dotnet build` and `dotnet msbuild` the workflow runs, so no MSBuild worker outlives it holding file locks.
 Every subcommand prints JSON on stdout, failures included, so read what it printed rather than guessing what it would return.
+Its paths are **repository-relative** — `diagnosticIds.path`, `resx[].files`, `docs.directory` and the rest — so prefix `$R/` before passing any of them back to a command or opening it, since every argument but `--doc` is absolute.
 
 `references/tool.md` has the reasons behind each of those, and is the file to open when something goes wrong with the tool itself: a command line the tool rejects, exit code 2, or a package that will not resolve — the last of which has its own decision table and must never be answered by lowering the pin.
 
 
 ## Workflow
 
+Eight steps, and Step 6 alone makes eight edits, so track them as a todo list: an interrupted run leaves the repository half-edited, and the list is what says which half.
+
 ### Step 1: Detect conventions
 
 Run `find-conventions` with `--path <repository>` and `--summary`, from the scratchpad, redirecting to a file there.
 Read the fields listed below; the rest of the JSON describes projects and resource groups the workflow does not touch, so skip it.
-Ask nothing in this step: collect what is undecided and put it in the single question round of Step 3.
+Ask nothing in this step: collect what is undecided and put it in the single question round of Step 4.
 
 - `diagnosticPrefix`, `diagnosticIds`, `suppressionIds` — prefix, IDs file paths, class visibility, digit count, existing IDs, and category bands (`// Design (ABC1xxx)` headers).
 - `diagnosticCategories` — the class holding the `category` constants, null when the repository has none.
@@ -65,17 +74,17 @@ Ask nothing in this step: collect what is undecided and put it in the single que
 - `projects[]` — `kind` (`analyzer`, `codefix`, `generator`, `test`, `roslyn-component`, `other`), the reporting classes with their files, `langVersion`, `targetFrameworks`, `neutralLanguage`, and `idSharing` on each code-fix project.
   A non-null `evaluationError` means MSBuild could not evaluate that project, so its package, reference and resource data is missing: say so rather than treating the project as empty.
 - `resx[]` — one entry per resource group: every culture file, `generator`, `resourceClass`, `neutralLanguage`, `localizableStringHelper`, `localizableStringProperties`, `requiresVisualStudioRegeneration`.
-  5c and 5d read them; `references/descriptors.md` and `references/resources.md` say what each one decides.
+  6c and 6d read them; `references/descriptors.md` and `references/resources.md` say what each one decides.
 - `docs` — `directory` and `indexFile` when rule pages exist, `candidateDirectories` (documentation-ish folders, shallowest first, each with its `markdownFiles` and its `files` of any kind), `mentionFiles` (Markdown elsewhere naming existing IDs), `suggestedDirectory`.
   A directory with pages, one holding source, and one an interrupted run left empty are three different things, and only the counts tell them apart.
 - `leftovers` — things that exist and hold nothing, each with `kind`, `path` and `detail`: `emptyDocumentationDirectory`, `categoriesClassWithoutConstants`, `analyzerReleasesWithoutRules`.
-  Step 2.5 reports them; nothing here is a reason to skip a step.
-- `analyzerReleases[]` — the Shipped/Unshipped pair per project, and `analyzersPackage` as a hint about the release-tracking analyzer that only 5e proves.
+  Step 3 reports them; nothing here is a reason to skip a step.
+- `analyzerReleases[]` — the Shipped/Unshipped pair per project, and `analyzersPackage` as a hint about the release-tracking analyzer that only 6e proves.
 - `git.docUrlTemplate`, `idSharing` (the roll-up of the per-project values, `mixed` when they differ; `references/id-conventions.md`), `idSharingReliable` (false when a project MSBuild could not evaluate leaves `none` meaning "unknown"), `diagnosticIdsProject`, `config`.
 - `excludedPluginDirectories` — Claude Code plugin trees inside the repository, skipped, this plugin included when it is installed there.
   Their sample files are documentation and must never be read as the repository's conventions; do not go looking in them by hand either.
 
-When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough); ask for the analyzer project only when none is detected; create categories / releases files alongside the existing ones, and a resx only when Step 3 asked for one.
+When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough); ask for the analyzer project only when none is detected; create categories / releases files alongside the existing ones, and a resx only when Step 4 asked for one.
 New IDs files follow the *structure* of `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/DiagnosticCategories.cs` with the user's namespace and prefix, one band header for the new category, and none of the sample constants (defaults in `references/id-conventions.md`).
 
 Read one existing descriptor in the target project (if any) before writing a new one; the new code must look like its neighbours (helper methods, argument style, resource class).
@@ -88,7 +97,7 @@ Decide whether the description asks for a **diagnostic** (report something) or a
 Words such as "suppress", "should not warn about", "CA1515 is wrong for test classes" mean suppression.
 When unclear, ask.
 
-### Step 2.5: Check whether it already exists
+### Step 3: Check whether it already exists
 
 Never assume the request is new.
 Repeated runs against the same repository, including this skill's own testing, routinely land on a diagnostic that is already there.
@@ -96,7 +105,7 @@ Repeated runs against the same repository, including this skill's own testing, r
 Compare the request against `diagnosticIds.ids` / `suppressionIds.ids`: look for the same name, an obvious synonym, or a constant whose descriptor reports the same pattern (grep the analyzer project for candidates when a name looks close).
 
 - **Exact match** — do not add anything.
-  Build the artifact checklist for that ID (constant, descriptor and `SupportedDiagnostics` entry, its strings — the three resx entries in every culture file, when that is the route the descriptor takes, the AnalyzerReleases row, the documentation page and index row, `helpLinkUri`), mark each present or missing, show the table, and run Steps 3 to 7 for the missing artifacts only.
+  Build the artifact checklist for that ID (constant, descriptor and `SupportedDiagnostics` entry, its strings — the three resx entries in every culture file, when that is the route the descriptor takes, the AnalyzerReleases row, the documentation page and index row, `helpLinkUri`), mark each present or missing, show the table, and run Steps 4 to 8 for the missing artifacts only.
   Say plainly that the diagnostic already existed.
 - **Partial match** — a different name reporting the same pattern, or the same name with different wording.
   Ask whether to add a new diagnostic or amend the existing one, and stop until answered.
@@ -106,7 +115,7 @@ Also look for leftovers from an interrupted earlier run, which are not ID collis
 Step 1's `leftovers` already lists the empty documentation directory, the categories class with no constants, and the `AnalyzerReleases.Unshipped.md` with no rows; add resx entries whose ID constant does not exist, which detection does not cover.
 List whatever turns up in the report, so the user can decide whether it is stale.
 
-### Step 3: Design the diagnostic
+### Step 4: Design the diagnostic
 
 Draft before asking, so the user reviews concrete text rather than open questions:
 
@@ -145,62 +154,72 @@ Re-draft once from the answers; do not loop.
 
 Apply `customTags` only when required (`CompilationEnd`, `Unnecessary`, `NotConfigurable`; see `references/descriptors.md`), otherwise omit the argument.
 
-### Step 4: Allocate the ID
+### Step 5: Allocate the ID
 
 Run `next-id` with `--ids-file` and `--category <name>` (diagnostic) or `--suppression` (suppression).
-This step decides a value and writes nothing; every file edit belongs to Step 5.
+This step decides a value and writes nothing; every file edit belongs to Step 6.
 
-When Step 1 reported `diagnosticPrefix` as null, do not try `--category` at all: run `--prefix <PREFIX> --band <n>` straight away, using the prefix answered in Step 3.
-The same `--prefix` allocates the first ID of an IDs file that does not exist yet, which 5a then creates.
+When Step 1 reported `diagnosticPrefix` as null, do not try `--category` at all: run `--prefix <PREFIX> --band <n>` straight away, using the prefix answered in Step 4.
+The same `--prefix` allocates the first ID of an IDs file that does not exist yet, which 6a then creates.
 
-Read the output before moving on: `references/id-conventions.md`, "What next-id answers with", says which results are normal outcomes rather than failures — a missing prefix, a file that is not there, a category with no band — and what each one leaves 5a to do.
+Read the output before moving on: `references/id-conventions.md`, "What next-id answers with", says which results are normal outcomes rather than failures — a missing prefix, a file that is not there, a category with no band — and what each one leaves 6a to do.
 
 
-### Step 5: Apply the edits
+### Step 6: Apply the edits
 
-Perform the edits in this order (5a–5h) so later edits can rely on earlier ones:
+Perform the edits in this order (6a–6h) so later edits can rely on earlier ones:
 
-- **5a.
-  IDs file**: add the `// <Category> (<PREFIX><n>xxx)` band header when Step 4 found none, then insert `public const string {Name} = "{Value}";` inside that block, sorted by number (`references/id-conventions.md`, "Layout of the IDs file").
+- **6a.
+  IDs file**: add the `// <Category> (<PREFIX><n>xxx)` band header when Step 5 found none, then insert `public const string {Name} = "{Value}";` inside that block, sorted by number (`references/id-conventions.md`, "Layout of the IDs file").
   No `#region`.
   Create `DiagnosticIds.cs` / `SuppressionIds.cs` when missing (see Step 1 for how to derive them from `examples/`).
-- **5b.
+- **6b.
   Categories class** (diagnostics only): add the constant when the category is new, to the class named by `diagnosticCategories.path`.
   When that is null, create `DiagnosticCategories.cs` next to the IDs file from `examples/DiagnosticCategories.cs`, matching the IDs class visibility.
-- **5c.
-  Descriptor**: when documentation was requested, run `doc-url --doc <intended page path>` now (it needs only the path, not the file) and pass the URL as `helpLinkUri`; omit the argument otherwise.
-  Add the `private static readonly` field named `{Name}` to the target class, then list it in `SupportedDiagnostics` / `SupportedSuppressions` — source generators have neither, so the field alone suffices.
-  Where its strings come from was settled in Step 3: literals go straight into the constructor and 5d is skipped, while the resx route reaches its entries through whichever form `localizableStringProperties` and `localizableStringHelper` imply, never by widening a `private` helper.
-  `references/descriptors.md` decides all of it and is worth opening here rather than guessing: the neighbouring shape to mirror, that route as a table, the severity spelling this step and 5e must agree on, what an uninitialized `SupportedDiagnostics` gets against what an already-populated one gets, the conservative forms to write and let 5e shorten, and the argument-order comment a message with two or more placeholders needs.
-  Create the class from `examples/AnalyzerWithDescriptor.cs` or `examples/SuppressorWithDescriptor.cs` when it does not exist; leave `Initialize` / `ReportSuppressions` without analysis logic.
-- **5d. resx** (resx route only; the literal route has nothing to do here): write to the resource group Step 3 settled on.
-  Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: that file was named in the Step 3 option the user answered.
-  A new file is written from the neutral file of an existing group and then **registered in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file"): `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
-  The first of those makes the class Visual Studio's to generate, so treat it as `requiresVisualStudioRegeneration` from here on; the second needs that project to already reference the package, which is a package reference to ask about rather than add.
-  **Copy every culture file of that group to the scratchpad first**; the files may already carry uncommitted work, so `git checkout --` is not a recovery path and must not be used.
-  Then run `add-resx-entries` **once per culture file**, each with its own entries JSON in the scratchpad and `--ids-file` pointing at the IDs file edited in 5a.
-  Which language each file is written in, and the placeholder comments the neutral file carries, are in `references/resources.md`; the two rules that cost the most when broken are that the neutral file follows `resx[].neutralLanguage` rather than an assumption of English, and that source text is never copied into a satellite file, where it looks translated and never gets fixed.
-  Read each report: when `valid` is false, restore from the scratchpad copies and stop.
+- **6c.
+  Descriptor**, in this order:
+  1. `helpLinkUri`: when documentation was requested, run `doc-url --doc <intended page path>` now — it needs only the path, not the file — and pass the URL as `helpLinkUri`; omit the argument otherwise.
+  2. Class: create it from `examples/AnalyzerWithDescriptor.cs` or `examples/SuppressorWithDescriptor.cs` when it does not exist, and leave `Initialize` / `ReportSuppressions` without analysis logic.
+  3. Field: add the `private static readonly` field named `{Name}`, shaped like the neighbouring descriptor read in Step 4.
+  4. Strings: Step 4 settled the route.
+     Literals go straight into the constructor and 6d is skipped; the resx route reaches its entries through whichever form `localizableStringProperties` and `localizableStringHelper` imply, never by widening a `private` helper.
+  5. Registration: list the field in `SupportedDiagnostics` / `SupportedSuppressions` — source generators have neither, so the field alone suffices.
+  6. Comment: a message with two or more placeholders gets the argument-order comment above the descriptor, so the `Diagnostic.Create` call sites written later pass them in that order.
+
+  `references/descriptors.md` decides all of it and is worth opening here rather than guessing: the neighbouring shape to mirror, that route as a table, the severity spelling this step and 6e must agree on, what an uninitialized `SupportedDiagnostics` gets against what an already-populated one gets, and the conservative forms to write and let 6e shorten.
+- **6d.
+  resx** (resx route only; the literal route has nothing to do here), in this order:
+  1. Target: write to the resource group Step 4 settled on.
+     Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: that file was named in the Step 4 option the user answered.
+  2. New file, only when that answer asked for one: write it from the neutral file of an existing group and **register it in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file") — `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
+     The first makes the class Visual Studio's to generate, so treat it as `requiresVisualStudioRegeneration` from here on; the second needs that project to already reference the package, which is a package reference to ask about rather than add.
+  3. Back up: **copy every culture file of that group to the scratchpad first**.
+     They may already carry uncommitted work, so `git checkout --` is not a recovery path and must not be used.
+  4. Write: run `add-resx-entries` **once per culture file**, each with its own entries JSON in the scratchpad and `--ids-file` pointing at the IDs file edited in 6a.
+  5. Language: the neutral file follows `resx[].neutralLanguage` rather than an assumption of English, and source text is never copied into a satellite file, where it looks translated and never gets fixed.
+     Which language each file is written in, and the placeholder comments the neutral file carries, are in `references/resources.md`.
+  6. Check: read each report, and when `valid` is false restore from the scratchpad copies and stop.
+
   Never edit `*.Designer.cs` (`references/resources.md`).
-- **5e.
-  AnalyzerReleases.Unshipped.md** (diagnostics only): build the analyzer project **before** adding the row, with `dotnet build <csproj> -nodeReuse:false` from inside the repository, and confirm it reports **RS2000** for the new ID or **RS2008** — the proof that release tracking runs at all, and the reason the build comes first (`references/analyzer-releases.md`, "Proving that tracking runs", also covers what to do when neither appears).
-  This build is also where warnings introduced by 5c first appear, IDE0090 and IDE0303 among them: fix them now rather than waiting for Step 6.
+- **6e.
+  AnalyzerReleases.Unshipped.md** (diagnostics only): build the analyzer project **before** adding the row, with `dotnet build <csproj> -nodeReuse:false` from inside the repository — re-exporting `DOTNET_CLI_UI_LANGUAGE` and `VSLANG` in that same call, since the preamble of "The helper tool" does not survive from an earlier one — and confirm it reports **RS2000** for the new ID or **RS2008** — the proof that release tracking runs at all, and the reason the build comes first (`references/analyzer-releases.md`, "Proving that tracking runs", also covers what to do when neither appears).
+  This build is also where warnings introduced by 6c first appear, IDE0090 and IDE0303 among them: fix them now rather than waiting for Step 7.
   Then append the row `ID | Category | Severity | <short sentence describing the rule>` under `### New Rules`.
   When the pair is missing, create `AnalyzerReleases.Unshipped.md` from `examples/` and `AnalyzerReleases.Shipped.md` with **only its two comment lines**; copying the sample release section verbatim declares rules that do not exist and earns RS2002.
-  Skip this whole edit for suppressions, and skip the build when 5d reported `requiresVisualStudioRegeneration`.
-- **5f.
-  Documentation** (when requested): create the directory when it does not exist, then the page at the path used in 5c, following the newest existing page or `examples/rule-doc-template.md` when there is none; add the index row in sorted position, creating the index from `examples/rules-index-template.md` when the directory is new (`references/documentation.md`).
+  Skip this whole edit for suppressions, and skip the build when 6d reported `requiresVisualStudioRegeneration`.
+- **6f.
+  Documentation** (when requested): create the directory when it does not exist, then the page at the path used in 6c, following the newest existing page or `examples/rule-doc-template.md` when there is none; add the index row in sorted position, creating the index from `examples/rules-index-template.md` when the directory is new (`references/documentation.md`).
   For suppressions, create pages only when `docs.suppressionDocs` or a suppressions table already exists.
-- **5g.
+- **6g.
   ID sharing**: read `idSharing` on **each** code-fix project in `projects[]`, not the repository-wide value.
   A project whose value is anything but `none` already reaches the IDs, so skip that one; act on each project that says `none`, whatever the others say — a repository where one code fix is wired and another is not reports `mixed` at the top level, and the wired one says nothing about the other.
   For each of them, ask for `AnalyzerProject` (recommended) or `LinkedFile`, then add the `<ProjectReference>` or the linked `<Compile>` item to that project and set the IDs class visibility accordingly.
   One question covers them all when the answer is the same for each.
   When `idSharingReliable` is false, `none` only means the detection could not see: say so and ask before adding anything, since the reference may already be there in a project MSBuild failed to evaluate.
   When `diagnosticIdsProject` is null the IDs file belongs to no project, so add the linked `<Compile>` item to each side (`SharedFile`) instead of moving it.
-- **5h.
+- **6h.
   Config file**: create or update `.claude/roslyn-skills/add-diagnostic.md` (`examples/add-diagnostic.md`, creating the directory when missing) only when a decision was made that detection cannot reproduce next time: a non-GitHub URL template, a docs layout the scan misreads, a descriptor helper worth naming in the notes.
-  A new prefix or a new band is **not** such a decision — 5a writes the `// <Category> (<PREFIX><n>xxx)` header, and detection reads both back from it, as Step 6 confirms.
+  A new prefix or a new band is **not** such a decision — 6a writes the `// <Category> (<PREFIX><n>xxx)` header, and detection reads both back from it, as Step 7 confirms.
   Creating the file for those leaves two sources of truth.
 
 Match each file's existing indentation, line endings, and blank-line pattern.
@@ -216,15 +235,15 @@ head -c 3 "$R/<neighbouring file>" | od -An -tx1    # ef bb bf means the file st
 A repository is routinely mixed — `.cs` as LF without a BOM, `.csproj` as CRLF with one — so ask the neighbour, not the repository.
 Where `.gitattributes` sets `eol`, it wins over what the working copy happens to hold.
 
-### Step 6: Verify
+### Step 7: Verify
 
 - Re-run `find-conventions --summary` and confirm the new ID appears under `diagnosticIds.ids` / `suppressionIds.ids`, and — on the resx route — that the resx report was `valid`.
-- Confirm the RS2000 or RS2008 observation from 5e happened and that the row now silences it.
+- Confirm the RS2000 or RS2008 observation from 6e happened and that the row now silences it.
 - Grep the target project for the new name: the IDs file, the descriptor, `SupportedDiagnostics` (or `SupportedSuppressions`), and — on the resx route — every culture file must contain it.
-- Build the analyzer project (`dotnet build <csproj> -nodeReuse:false`) **only when** `requiresVisualStudioRegeneration` is false; when it is true the build is expected to fail with CS0117 until Visual Studio regenerates `Resources.Designer.cs`, so skip the build and say so.
+- Build the analyzer project (`dotnet build <csproj> -nodeReuse:false`, with the same two exports) **only when** `requiresVisualStudioRegeneration` is false; when it is true the build is expected to fail with CS0117 until Visual Studio regenerates `Resources.Designer.cs`, so skip the build and say so.
   Fix every warning the new code introduced (compare against a build before the change when unsure); under `EnforceCodeStyleInBuild` with `AnalysisLevel` `latest-all`, typical ones are IDE0090 (use `new(...)` for the descriptor), IDE0303 (use a collection expression) and CS1574 (unresolvable `cref` in a project without Microsoft.CodeAnalysis).
 
-### Step 7: Report
+### Step 8: Report
 
 Summarize in a short list: the ID and name, every file changed or created, the `helpLinkUri` (or that it was omitted), and — when a new resx was created whose class is generated at build time — that the class lives in `obj/` and an unbuilt clone shows it as undefined until the first build, and the next steps the skill cannot do: regenerate `Resources.Designer.cs` in Visual Studio when flagged, implement the analysis / suppression logic, add tests, and translate the satellite resx files when the strings went to resx.
 
@@ -236,9 +255,9 @@ Summarize in a short list: the ID and name, every file changed or created, the `
 - The existing descriptors decide literals or resx; creating or sharing a resx file is the user's answer, never an assumption.
 - Never change the accessibility, signature, or name of an existing member to make new code compile; a `private` helper means the entry point belongs next to it, in the same class.
 - Back up to the scratchpad before any edit that may need undoing, and never recover with `git checkout --`, `git restore` or `git stash`: the file may hold work from before this run.
-- Check whether the diagnostic already exists before adding anything (Step 2.5).
+- Check whether the diagnostic already exists before adding anything (Step 3).
 - Suppressions: separate IDs file, independent sequence, `Justification` only, no AnalyzerReleases row.
-- `helpLinkUri` points at a page that exists once 5f has run, or is omitted; between 5c and 5f it deliberately points at a page not yet written.
+- `helpLinkUri` points at a page that exists once 6f has run, or is omitted; between 6c and 6f it deliberately points at a page not yet written.
 - Documentation is always offered, never skipped silently; a missing documentation directory is created, not treated as a decision.
 - Ask for severity, category, and message arguments unless the request already states them.
 - Do not implement analysis logic, code fixes, or tests; offer them as follow-ups.
@@ -252,7 +271,7 @@ Summarize in a short list: the ID and name, every file changed or created, the `
   It also carries what `next-id` answers with.
 - **`references/descriptors.md`** — DiagnosticDescriptor / SuppressionDescriptor patterns, literal and resx strings, text format rules (RS1031–RS1033), the severity spellings, `SupportedDiagnostics`, required `customTags`, source generator descriptors.
 - **`references/resources.md`** — resx entry naming and ordering, `add-resx-entries` usage, creating and registering a new resx file, Designer.cs regeneration matrix.
-- **`references/analyzer-releases.md`** — AnalyzerReleases file format, Notes column convention, RS2000 family, and why 5e builds before adding the row.
+- **`references/analyzer-releases.md`** — AnalyzerReleases file format, Notes column convention, RS2000 family, and why 6e builds before adding the row.
 - **`references/documentation.md`** — documentation layout, page and index templates, URL resolution, and the `.claude/roslyn-skills/add-diagnostic.md` configuration schema.
 
 ### Examples

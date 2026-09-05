@@ -59,7 +59,7 @@ CTS1001 | Design | Warning | Design | Info | Promoted after stabilizing
      Do not add `<AdditionalFiles>` items for them.
      Recent SDKs register `AnalyzerReleases.*.md` as additional files implicitly, so their absence from the project file means nothing; adding the items by hand is noise, and in the worst case a duplicate.
 
-Whether tracking actually runs is only observable, never inferable: build once while the descriptor exists and its row does not, and look for RS2000 (SKILL.md 5e).
+Whether tracking actually runs is only observable, never inferable: build once while the descriptor exists and its row does not, and look for RS2000 (SKILL.md 6e).
 A clean build proves nothing, because a tracking analyzer that never loads also produces one.
 If RS2000 does not appear, reference `Microsoft.CodeAnalysis.Analyzers` directly with `PrivateAssets="all"`.
 
@@ -87,8 +87,8 @@ Do not add suppression IDs to either file.
 
 ## Proving that tracking runs
 
-SKILL.md 5e builds the analyzer project **before** adding the row, which looks backwards and is not.
-The descriptor written in 5c exists by then with no row to match it, so a release-tracking analyzer that is actually running reports **RS2000** for the new ID, or **RS2008** ("enable analyzer release tracking") when the release files do not exist yet.
+SKILL.md 6e builds the analyzer project **before** adding the row, which looks backwards and is not.
+The descriptor written in 6c exists by then with no row to match it, so a release-tracking analyzer that is actually running reports **RS2000** for the new ID, or **RS2008** ("enable analyzer release tracking") when the release files do not exist yet.
 Either one proves tracking runs, at the cost of one build and with no file to restore.
 A clean build after the row is added proves nothing: it is equally consistent with the analyzer never having run.
 

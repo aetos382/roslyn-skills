@@ -108,7 +108,7 @@ Rules:
 - No placeholder, no comment.
   `Title` and `Description` usually take none.
 - The comment is not written into `AnalyzerReleases.*.md` or the documentation page; those describe the rule, not its message arguments.
-  It does, however, match the argument-order comment placed above the descriptor in 5c, so keep the two consistent.
+  It does, however, match the argument-order comment placed above the descriptor in 6c, so keep the two consistent.
 
 ## Designer.cs and build errors
 
@@ -127,7 +127,7 @@ Always mention this in the final summary when it applies; it is the one step the
 
 ## Creating a new resx file
 
-Which file SKILL.md Step 3 offers, when the project has no descriptor to follow and the question is asked:
+Which file SKILL.md Step 4 offers, when the project has no descriptor to follow and the question is asked:
 
 | The project has | The resx option is |
 |-----------------|--------------------|
@@ -138,7 +138,7 @@ Which file SKILL.md Step 3 offers, when the project has no descriptor to follow 
 Name the file in the option text either way, so the answer is also the consent to create or share it.
 When several groups qualify, offer the likeliest and say the others exist.
 
-Only when Step 3's question was answered that way; never on the skill's own reading of the repository.
+Only when Step 4's question was answered that way; never on the skill's own reading of the repository.
 Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, then **register it in the csproj**.
 The SDK's default glob already embeds it, so the item exists to carry metadata and is written as `Update`, never `Include`:
 
@@ -193,8 +193,8 @@ When `LogicalName` is used for the neutral file, every culture file needs its ow
 Generation happens during the build, and the generated file lives in `obj/`, so nothing is checked in and **the class does not exist until the project is built once**.
 Before that first build the editor reports the descriptor's `Resources` as undefined, and so does a fresh clone that has not been built.
 That resolves itself rather than needing a separate step: `GenerateResource` runs as part of `PrepareResources`, ahead of `CoreCompile`, so one build both writes the class and compiles against it — measured from a cleaned `obj/` and `bin/`, with the descriptor already referencing the class.
-The workflow builds in 5e (or, for suppressions, in Step 6), which is that build.
-Say so in the Step 7 report anyway, because the next person to open the repository sees the red editor before they see a build.
+The workflow builds in 6e (or, for suppressions, in Step 7), which is that build.
+Say so in the Step 8 report anyway, because the next person to open the repository sees the red editor before they see a build.
 `Microsoft.CodeAnalysis.ResxSourceGenerator` behaves the same way; only `ResXFileCodeGenerator`, whose `Designer.cs` is checked in, does not.
 
 ## Editing rules for the XML
