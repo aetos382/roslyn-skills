@@ -1,6 +1,10 @@
 using System.Collections.Generic;
 
-internal static partial class Fixtures
+using Aetos.RoslynSkills.Evals;
+
+namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
+
+internal static partial class AddDiagnosticFixtures
 {
     /// <summary>
     /// A repository that already does everything: a prefix with band headers, a categories class, resx strings in
@@ -11,6 +15,7 @@ internal static partial class Fixtures
     {
         var files = Common();
 
+        // lang=xml
         files["src/Acme.Analyzers/Acme.Analyzers.csproj"] = """
             <Project Sdk="Microsoft.NET.Sdk">
 
@@ -26,7 +31,6 @@ internal static partial class Fixtures
                 <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
               </ItemGroup>
 
-
               <ItemGroup>
                 <EmbeddedResource Update="Resources.resx">
                   <StronglyTypedFileName>$(IntermediateOutputPath)Resources.Designer.cs</StronglyTypedFileName>
@@ -39,6 +43,7 @@ internal static partial class Fixtures
             </Project>
             """;
 
+        // lang=c#
         files["src/Acme.Analyzers/DiagnosticIds.cs"] = """
             namespace Acme.Analyzers;
 
@@ -52,6 +57,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=c#
         files["src/Acme.Analyzers/DiagnosticCategories.cs"] = """
             namespace Acme.Analyzers;
 
@@ -63,6 +69,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=c#
         files["src/Acme.Analyzers/AcmeAnalyzer.cs"] = """
             using System.Collections.Immutable;
 
@@ -105,6 +112,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=xml
         files["src/Acme.Analyzers/Resources.resx"] = ResxHeader + """
               <data name="AbstractTypeShouldNotHavePublicConstructorDescription" xml:space="preserve">
                 <value>A public constructor on an abstract type can never be called from outside the type's own hierarchy. Declare it protected instead.</value>
@@ -127,6 +135,7 @@ internal static partial class Fixtures
             </root>
             """;
 
+        // lang=xml
         files["src/Acme.Analyzers/Resources.ja.resx"] = ResxHeader + """
               <data name="AbstractTypeShouldNotHavePublicConstructorDescription" xml:space="preserve">
                 <value>抽象型の public コンストラクターは、その型の派生階層の外からは決して呼び出せません。protected として宣言してください。</value>
@@ -149,11 +158,13 @@ internal static partial class Fixtures
             </root>
             """;
 
+        // lang=markdown
         files["src/Acme.Analyzers/AnalyzerReleases.Shipped.md"] = """
             ; Shipped analyzer releases
             ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
             """;
 
+        // lang=markdown
         files["src/Acme.Analyzers/AnalyzerReleases.Unshipped.md"] = """
             ; Unshipped analyzer release
             ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
@@ -168,6 +179,8 @@ internal static partial class Fixtures
 
         // No ProjectReference back to the analyzer project, so find-conventions reports idSharing "none" for this
         // one: what 6g has to notice, and what the Step 4 round has to ask about.
+
+        // lang=xml
         files["src/Acme.Analyzers.CodeFixes/Acme.Analyzers.CodeFixes.csproj"] = """
             <Project Sdk="Microsoft.NET.Sdk">
 
@@ -184,6 +197,7 @@ internal static partial class Fixtures
             </Project>
             """;
 
+        // lang=c#
         files["src/Acme.Analyzers.CodeFixes/TaskShouldBeAwaitedCodeFixProvider.cs"] = """
             using System.Collections.Immutable;
             using System.Threading.Tasks;
@@ -204,6 +218,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=markdown
         files["docs/rules/README.md"] = """
             # Rules
 
@@ -213,6 +228,7 @@ internal static partial class Fixtures
             | [ACM2001](ACM2001.md) | Usage | Warning | Task should be awaited |
             """;
 
+        // lang=markdown
         files["docs/rules/ACM1001.md"] = """
             # ACM1001: Abstract type should not have a public constructor
 
@@ -239,6 +255,7 @@ internal static partial class Fixtures
             Do not suppress this rule.
             """;
 
+        // lang=markdown
         files["docs/rules/ACM2001.md"] = """
             # ACM2001: Task should be awaited
 

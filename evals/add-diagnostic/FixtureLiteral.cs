@@ -1,6 +1,10 @@
 using System.Collections.Generic;
 
-internal static partial class Fixtures
+using Aetos.RoslynSkills.Evals;
+
+namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
+
+internal static partial class AddDiagnosticFixtures
 {
     /// <summary>
     /// A repository whose descriptors pass literal strings and that has no resx anywhere, no documentation
@@ -12,6 +16,7 @@ internal static partial class Fixtures
     {
         var files = Common();
 
+        // lang=xml
         files["src/Northwind.Analyzers/Northwind.Analyzers.csproj"] = """
             <Project Sdk="Microsoft.NET.Sdk">
 
@@ -31,6 +36,7 @@ internal static partial class Fixtures
             </Project>
             """;
 
+        // lang=c#
         files["src/Northwind.Analyzers/DiagnosticIds.cs"] = """
             namespace Northwind.Analyzers;
 
@@ -42,6 +48,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=c#
         files["src/Northwind.Analyzers/DiagnosticCategories.cs"] = """
             namespace Northwind.Analyzers;
 
@@ -51,6 +58,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=c#
         files["src/Northwind.Analyzers/NorthwindAnalyzer.cs"] = """
             using System.Collections.Immutable;
 
@@ -91,11 +99,13 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=markdown
         files["src/Northwind.Analyzers/AnalyzerReleases.Shipped.md"] = """
             ; Shipped analyzer releases
             ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
             """;
 
+        // lang=markdown
         files["src/Northwind.Analyzers/AnalyzerReleases.Unshipped.md"] = """
             ; Unshipped analyzer release
             ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md

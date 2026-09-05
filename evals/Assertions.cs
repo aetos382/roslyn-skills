@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
+namespace Aetos.RoslynSkills.Evals;
+
 /// <summary>
 /// The checks evals.json is written in. Each one answers with a verdict and the evidence behind it, because a
 /// bare "FAIL" on a run that took an agent several minutes is not enough to act on.
@@ -22,6 +24,17 @@ internal static partial class Assertions
 
     /// <summary>The pattern with its name placeholders knocked out, for validating it without a run to resolve them against.</summary>
     public static string StripPlaceholders(string pattern) => NamePlaceholder.Replace(pattern, "X");
+
+    /// <summary>
+    /// Every kind <see cref="Evaluate"/> understands, kept beside the switch so the two are read together: a kind
+    /// missing from here is one <c>check</c> rejects in an evals.json that would in fact have run.
+    /// </summary>
+    public static IReadOnlyList<string> Kinds { get; } =
+    [
+        "jsonContains", "jsonNotContains", "jsonCount", "jsonEquals",
+        "fileExists", "fileMissing", "contains", "anyContains", "notContains",
+        "resxEntryCount", "resxParity", "noLeftovers", "build",
+    ];
 
     public static (bool Passed, string Evidence) Evaluate(JsonObject a, GradingContext c)
     {
@@ -49,7 +62,7 @@ internal static partial class Assertions
     {
         var path = a["path"]!.ToString();
         var value = a["value"]!.ToString();
-        var found = Select(c.Conventions, path).Select(n => n?.ToString()).ToList();
+        var found = Select(c.Scan, path).Select(n => n?.ToString()).ToList();
         var has = found.Contains(value, StringComparer.Ordinal);
         return (has == expected, $"{path} = [{string.Join(", ", found)}]");
     }
@@ -58,7 +71,7 @@ internal static partial class Assertions
     {
         var path = a["path"]!.ToString();
         var expected = (int)a["count"]!;
-        var found = Select(c.Conventions, path).ToList();
+        var found = Select(c.Scan, path).ToList();
         return (found.Count == expected, $"{path} holds {found.Count}, expected {expected}");
     }
 
@@ -66,7 +79,7 @@ internal static partial class Assertions
     {
         var path = a["path"]!.ToString();
         var expected = a["value"]!.ToString();
-        var found = Select(c.Conventions, path).Select(n => n?.ToString()).ToList();
+        var found = Select(c.Scan, path).Select(n => n?.ToString()).ToList();
         return (found.Count == 1 && found[0] == expected, $"{path} = [{string.Join(", ", found)}], expected {expected}");
     }
 
@@ -152,7 +165,7 @@ internal static partial class Assertions
 
     private static (bool, string) NoLeftovers(GradingContext c)
     {
-        var leftovers = c.Conventions["leftovers"]?.AsArray() ?? [];
+        var leftovers = c.Scan["leftovers"]?.AsArray() ?? [];
         var described = leftovers.Select(l => $"{l!["kind"]} at {l["path"]}").ToList();
         return (described.Count == 0, described.Count == 0 ? "none" : string.Join("; ", described));
     }
@@ -196,14 +209,14 @@ internal static partial class Assertions
             .Select(d => d.Attribute("name")!.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-    private static string Substitute(string pattern, GradingContext c, out string? unresolved)
+    internal static string Substitute(string pattern, GradingContext c, out string? unresolved)
     {
         string? failure = null;
         var result = NamePlaceholder.Replace(pattern, m =>
         {
             var value = m.Groups["value"].Value;
-            var name = Select(c.Conventions, "diagnosticIds.ids[]")
-                .Concat(Select(c.Conventions, "suppressionIds.ids[]"))
+            var name = Select(c.Scan, "diagnosticIds.ids[]")
+                .Concat(Select(c.Scan, "suppressionIds.ids[]"))
                 .FirstOrDefault(n => n?["value"]?.ToString() == value)
                 ?["name"]?.ToString();
 
@@ -224,7 +237,7 @@ internal static partial class Assertions
     /// A dotted path into the scan's JSON, where a segment ending in <c>[]</c> expands the array it names:
     /// <c>diagnosticIds.ids[].value</c> is every ID value the scan found.
     /// </summary>
-    private static IEnumerable<JsonNode?> Select(JsonNode? root, string path)
+    internal static IEnumerable<JsonNode?> Select(JsonNode? root, string path)
     {
         IEnumerable<JsonNode?> current = [root];
         foreach (var raw in path.Split('.'))
@@ -279,7 +292,7 @@ internal static partial class Assertions
         }
     }
 
-    private static Regex GlobToRegex(string glob)
+    internal static Regex GlobToRegex(string glob)
     {
         var builder = new System.Text.StringBuilder("^");
         for (var i = 0; i < glob.Length; i++)

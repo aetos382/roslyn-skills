@@ -1,6 +1,10 @@
 using System.Collections.Generic;
 
-internal static partial class Fixtures
+using Aetos.RoslynSkills.Evals;
+
+namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
+
+internal static partial class AddDiagnosticFixtures
 {
     /// <summary>
     /// An analyzer project with nothing in it yet: no IDs file, no categories class, no descriptor to follow, no
@@ -11,6 +15,8 @@ internal static partial class Fixtures
     {
         var files = Common();
 
+
+        // lang=xml
         files["src/Fabrikam.Analyzers/Fabrikam.Analyzers.csproj"] = """
             <Project Sdk="Microsoft.NET.Sdk">
 
@@ -30,6 +36,7 @@ internal static partial class Fixtures
             </Project>
             """;
 
+        // lang=c#
         files["src/Fabrikam.Analyzers/FabrikamAnalyzer.cs"] = """
             using System.Collections.Immutable;
 
@@ -51,6 +58,7 @@ internal static partial class Fixtures
             }
             """;
 
+        // lang=markdown
         files["README.md"] = """
             # Fabrikam.Analyzers
 

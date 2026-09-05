@@ -5,8 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+
+namespace Aetos.RoslynSkills.Evals;
 
 /// <summary>Building a fixture repository, running the tool and the compiler over it, and writing the prompt the
 /// agent is handed.</summary>
@@ -15,38 +18,104 @@ internal static partial class Harness
     [GeneratedRegex(@"Aetos\.RoslynSkills\.Tools@(?<version>[0-9][^\s""]*)")]
     private static partial Regex ToolPinPattern { get; }
 
-    // MSBuild prints a warning once per project that reports it and repeats it across targets, so the raw count
-    // means nothing; the whole text from "warning" onwards is what makes two lines the same warning or not.
+    // The whole line, because the whole line is what makes two warnings the same one. MSBuild repeats a warning
+    // across the targets that report it, always with the same file, position and project, so matching the line
+    // collapses those; matching only from "warning" onwards would also collapse two real warnings of the same
+    // code at different places, which is exactly the case the build assertion exists to catch.
     // The code is not always letters-then-digits either: the SDK reports EnableGenerateDocumentationFile under
     // that name, and a warning the counter cannot see is a warning the build assertion would never notice.
-    [GeneratedRegex(@"warning (?<code>[A-Za-z][A-Za-z0-9]*):.*$", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^.*?warning (?<code>[A-Za-z][A-Za-z0-9]*):.*$", RegexOptions.Multiline)]
     private static partial Regex WarningPattern { get; }
 
     /// <summary>The repository this file lives in, found from the compiler's own view of where it is.</summary>
     public static string RepoRoot { get; } = Directory.GetParent(ThisFile())!.Parent!.FullName;
 
-    public static string SkillDirectory { get; } =
-        Path.Combine(RepoRoot, "plugin", "skills", "add-diagnostic");
+    public static string SkillDirectory(string skill) =>
+        Path.Combine(RepoRoot, "plugin", "skills", skill);
 
-    public static string DefaultOutRoot { get; } =
-        Path.Combine(Path.GetTempPath(), "roslyn-skills-evals");
+    /// <summary>Where a skill's prompts and fixtures live, one directory per skill.</summary>
+    public static string EvalsDirectory(string skill) => Path.Combine(RepoRoot, "evals", skill);
 
     /// <summary>
-    /// The tool version SKILL.md tells the agent to run. Read from the skill rather than pinned here, so an eval
-    /// never silently measures a different release than the one the skill ships with.
+    /// Runs live under the workspace's own <c>Temp/</c>, which git already ignores, so that what an eval produced
+    /// stays next to the work rather than somewhere the machine may clear out. A fixture carries the MSBuild files
+    /// that stop this repository's own from reaching it, so <c>--out</c> can point anywhere.
     /// </summary>
-    public static string ToolPin { get; } = ReadToolPin();
+    public static string DefaultOutRoot { get; } = Path.Combine(RepoRoot, "Temp", "evals");
 
-    public static IEnumerable<JsonObject> Evals()
+    /// <summary>
+    /// The SDK pin this repository uses, for the fixtures to carry as their own <c>global.json</c>. Without one a
+    /// fixture builds under whichever SDK happens to be newest on the machine, which decides what the analyzers
+    /// say — and a baseline that shifts under the eval is a baseline that cannot separate the agent's warnings
+    /// from the toolchain's.
+    /// </summary>
+    public static string FixtureGlobalJson { get; } = ReadSdkPin();
+
+    /// <summary>
+    /// The tool version that skill's SKILL.md tells the agent to run. Read from the skill rather than pinned here,
+    /// so an eval never silently measures a different release than the one the skill ships with.
+    /// </summary>
+    public static string ToolPin(string skill)
     {
-        var json = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "evals", "evals.json")))!;
+        if (ToolPins.TryGetValue(skill, out var cached))
+        {
+            return cached;
+        }
+
+        var text = File.ReadAllText(Path.Combine(SkillDirectory(skill), "SKILL.md"));
+        var match = ToolPinPattern.Match(text);
+        var version = match.Success
+            ? match.Groups["version"].Value
+            : throw new InvalidOperationException($"{skill}/SKILL.md does not name a pinned tool version.");
+
+        ToolPins[skill] = version;
+        return version;
+    }
+
+    private static readonly Dictionary<string, string> ToolPins = new(StringComparer.Ordinal);
+
+    /// <summary>Every eval of every skill, in the order the skills are registered.</summary>
+    public static IEnumerable<(string Skill, JsonObject Eval)> Evals()
+    {
+        foreach (var skill in Skills.All.Keys)
+        {
+            foreach (var eval in Evals(skill))
+            {
+                yield return (skill, eval);
+            }
+        }
+    }
+
+    public static IEnumerable<JsonObject> Evals(string skill)
+    {
+        var file = Path.Combine(EvalsDirectory(skill), "evals.json");
+        var json = JsonNode.Parse(File.ReadAllText(file))!;
         return json["evals"]!.AsArray().Select(e => e!.AsObject());
     }
 
-    public static string? Option(string[] args, string name)
+    /// <summary>
+    /// Finds the eval a command line names, as a bare id or as <c>skill:id</c>. A bare id that two skills both use
+    /// is refused rather than guessed at: picking one silently would run one skill's eval and grade it against the
+    /// other's assertions.
+    /// </summary>
+    public static (string Skill, JsonObject Eval) Resolve(string reference)
     {
-        var i = Array.IndexOf(args, name);
-        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        var parts = reference.Split(':', 2);
+        var matches = Evals()
+            .Where(e => parts.Length == 2
+                ? e.Skill == parts[0] && e.Eval["id"]!.ToString() == parts[1]
+                : e.Eval["id"]!.ToString() == reference)
+            .ToList();
+
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => throw new KeyNotFoundException($"unknown eval '{reference}'; run 'list' to see them."),
+            _ => throw new ArgumentException(
+                $"'{reference}' names an eval in more than one skill ({string.Join(", ", matches.Select(m => m.Skill))}); "
+                + "say which as <skill>:<eval-id>.",
+                nameof(reference)),
+        };
     }
 
     public static void Materialize(Fixture fixture, string directory)
@@ -74,21 +143,34 @@ internal static partial class Harness
         Git(repo, "remote", "add", "origin", remote);
     }
 
-    public static string FindConventions(string repo)
+    /// <summary>
+    /// The structured reading of the fixture that a skill's <c>Scan</c> command produces, which is what the
+    /// <c>json*</c> assertions are written against. Null for a skill that declares no such command.
+    /// </summary>
+    public static string? Scan(string skill, string repo)
     {
+        if (Skills.Get(skill).Scan is not { } command)
+        {
+            return null;
+        }
+
         // Run it from outside the repository, the way the skill insists on: inside it, the fixture's own
-        // NuGet.config and any global.json above it start deciding what the tool runs as.
+        // NuGet.config and its global.json start deciding what the tool runs as.
         var scratch = Directory.CreateTempSubdirectory("roslyn-skills-eval-").FullName;
         try
         {
-            var (exit, stdout, stderr) = Run(
-                "dotnet",
-                ["tool", "exec", $"Aetos.RoslynSkills.Tools@{ToolPin}", "--", "add-diagnostic", "find-conventions", "--path", repo, "--summary"],
-                scratch);
+            string[] arguments =
+            [
+                "tool", "exec", $"Aetos.RoslynSkills.Tools@{ToolPin(skill)}", "--",
+                .. command.Select(a => a.Replace("{repo}", repo, StringComparison.Ordinal)),
+            ];
+
+            var (exit, stdout, stderr) = Run("dotnet", arguments, scratch);
 
             if (exit != 0 || stdout.Length == 0)
             {
-                throw new InvalidOperationException($"find-conventions failed (exit {exit}):\n{stdout}\n{stderr}");
+                throw new InvalidOperationException(
+                    $"the {skill} scan failed (exit {exit}):\n{stdout}\n{stderr}");
             }
 
             return stdout;
@@ -117,33 +199,38 @@ internal static partial class Harness
             ("VSLANG", "1033"));
 
         var log = stdout + stderr;
-        var counts = WarningPattern.Matches(log)
-            .Select(m => (Code: m.Groups["code"].Value, Text: m.Value))
+        return (exit == 0, CountWarnings(log), log);
+    }
+
+    /// <summary>
+    /// How many distinct warnings each code produced in a build log, which is what the <c>build</c> assertion
+    /// compares against the baseline.
+    /// </summary>
+    internal static Dictionary<string, int> CountWarnings(string log) =>
+        WarningPattern.Matches(log)
+            .Select(m => (Code: m.Groups["code"].Value, Line: m.Value.Trim()))
             .Distinct()
             .GroupBy(w => w.Code, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
-
-        return (exit == 0, counts, log);
-    }
 
     /// <summary>
     /// The task the agent is handed. It has to say how to behave without a human in front of it, because the
     /// skill asks questions by design and a run that stops on one measures nothing.
     /// </summary>
-    public static string Prompt(JsonObject eval, string run, string repo, bool withSkill)
+    public static string Prompt(string skill, JsonObject eval, string run, string repo, bool withSkill)
     {
-        var skill = withSkill
-            ? $"Skill to follow: {Path.Combine(SkillDirectory, "SKILL.md").Replace('\\', '/')}\nRead it first, and follow it.\n"
+        var heading = withSkill
+            ? $"Skill to follow: {Path.Combine(SkillDirectory(skill), "SKILL.md").Replace('\\', '/')}\nRead it first, and follow it.\n"
             : "No skill applies here. Work it out yourself.\n";
 
         return $"""
-            {skill}
+            {heading}
             Target repository: {repo.Replace('\\', '/')}
             Scratch directory: {Path.Combine(run, "scratch").Replace('\\', '/')}
 
             Task, in the words of the repository's owner:
 
-            > {eval["prompt"]!.ToString().Replace("\n", "\n> ")}
+            > {eval["prompt"]!.ToString().Replace("\n", "\n> ", StringComparison.Ordinal)}
 
             How this run works, since there is nobody to talk to:
 
@@ -202,13 +289,12 @@ internal static partial class Harness
         return (process.ExitCode, stdout.Result, stderr.Result);
     }
 
-    private static string ReadToolPin()
+    private static string ReadSdkPin()
     {
-        var text = File.ReadAllText(Path.Combine(SkillDirectory, "SKILL.md"));
-        var match = ToolPinPattern.Match(text);
-        return match.Success
-            ? match.Groups["version"].Value
-            : throw new InvalidOperationException("SKILL.md does not name a pinned tool version.");
+        var json = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "global.json")))!;
+        var sdk = json["sdk"]?.DeepClone()
+            ?? throw new InvalidOperationException("global.json does not pin an SDK.");
+        return new JsonObject { ["sdk"] = sdk }.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static string ThisFile([CallerFilePath] string path = "") => path;

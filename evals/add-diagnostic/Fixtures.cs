@@ -1,26 +1,23 @@
-// Fixture repositories the evals run against.
+// The repositories the add-diagnostic evals run against.
 //
 // They are generated rather than committed as real projects: every eval needs a repository in a different state
-// (resx or literals, docs or none, an existing prefix or none at all), the agent edits them destructively, and a
-// nested .csproj inside this repository would join its build. Generating means each run starts from a state no
-// earlier run can have touched.
+// (resx or literals, docs or none, an existing prefix or none at all), and the agent edits them destructively.
+// Generating means each run starts from a state no earlier run can have touched.
 
+using System;
 using System.Collections.Generic;
 
-/// <summary>One repository shape: its files, the git remote <c>doc-url</c> resolves against, and the project the
-/// grader builds to see whether the agent's edits compile.</summary>
-internal sealed record Fixture(string Name, string Remote, string BuildProject, IReadOnlyDictionary<string, string> Files);
+using Aetos.RoslynSkills.Evals;
 
-internal static partial class Fixtures
+namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
+
+internal static partial class AddDiagnosticFixtures
 {
-    public static IReadOnlyList<string> Names { get; } = ["mature", "greenfield", "literal"];
-
-    public static Fixture Get(string name) => name switch
+    public static IReadOnlyDictionary<string, Func<Fixture>> All { get; } = new Dictionary<string, Func<Fixture>>(StringComparer.Ordinal)
     {
-        "mature" => Mature(),
-        "greenfield" => Greenfield(),
-        "literal" => Literal(),
-        _ => throw new KeyNotFoundException($"unknown fixture '{name}'; known: {string.Join(", ", Names)}"),
+        ["mature"] = Mature,
+        ["greenfield"] = Greenfield,
+        ["literal"] = Literal,
     };
 
     // Shared by all three: a .gitignore so the agent's builds stay out of git status, a NuGet.config that ignores
@@ -32,6 +29,8 @@ internal static partial class Fixtures
             bin/
             obj/
             """,
+
+        // lang=xml
         ["NuGet.config"] = """
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
@@ -55,6 +54,8 @@ internal static partial class Fixtures
             dotnet_diagnostic.CA1062.severity = none
             dotnet_diagnostic.CA1725.severity = none
             """,
+
+        // lang=xml
         ["Directory.Build.props"] = """
             <Project>
               <PropertyGroup>
@@ -68,8 +69,37 @@ internal static partial class Fixtures
               </PropertyGroup>
             </Project>
             """,
+
+        // The SDK a fixture builds under has to be the same one every time, wherever the run directory sits: it
+        // decides which analyzers run and what they say, and a baseline that moves with the machine cannot
+        // separate the agent's warnings from the toolchain's. This is the pin from the repository's own
+        // global.json.
+        ["global.json"] = Harness.FixtureGlobalJson,
+
+        // MSBuild walks up from the project until it finds each of these and stops there, so a fixture that
+        // declares none of them inherits whatever sits above it. Runs live under this repository's own Temp,
+        // where "above it" is this repository: its Directory.Packages.props would turn central package management
+        // on and make every Version attribute below an NU1008 error, and its Directory.Build.targets would add
+        // packaging metadata to a project that is not being packaged. Each file exists to stop that search, not
+        // to say anything.
+
+        // lang=xml
+        ["Directory.Build.targets"] = """
+            <Project>
+            </Project>
+            """,
+
+        // lang=xml
+        ["Directory.Packages.props"] = """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """,
     };
 
+    // lang=xml
     private const string ResxHeader = """
         <?xml version="1.0" encoding="utf-8"?>
         <root>
