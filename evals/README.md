@@ -29,7 +29,7 @@ The skill's name is its directory under `plugin/skills/`, which is where the pro
 ## The loop
 
 ```bash
-dotnet run --project evals -- list                     # every skill's evals
+dotnet run --project evals -- list                     # every skill's evals; --skill narrows it to one
 dotnet run --project evals -- new-run --skill add-diagnostic --id mature-new-category
 # hand the printed prompt.md to an agent, wait for it to finish
 dotnet run --project evals -- grade <run directory>

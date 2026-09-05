@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.CommandLine;
+using System.Linq;
 
 using Spectre.Console;
 using Spectre.Console.Rendering;
@@ -13,16 +14,27 @@ internal static class ListCommand
 
     public static Command Create()
     {
-        var command = new Command("list", "Lists every eval, with the fixture it runs against and what it is meant to guarantee.");
-        command.SetAction(_ => Run());
+        var skill = new Option<string?>("--skill")
+        {
+            Description = "Only this skill's evals. Every skill's when omitted.",
+        };
+
+        var command = new Command("list", "Lists the evals and what each one is meant to guarantee.");
+        command.Options.Add(skill);
+        command.SetAction(parse => Run(parse.GetValue(skill)));
         return command;
     }
 
-    private static int Run()
+    private static int Run(string? only)
     {
+        // An unknown name is left to Skills.Get, which answers with the ones that do exist.
+        var evals = only is null
+            ? Harness.Evals()
+            : Harness.Evals(only).Select(e => (Skill: only, Eval: e));
+
         var blocks = new List<IRenderable>();
 
-        foreach (var (skill, eval) in Harness.Evals())
+        foreach (var (skill, eval) in evals)
         {
             // One labelled field per line rather than a table of columns: a summary is a sentence, and a sentence
             // in a column is either truncated or squeezed into a column's share of the width. As the second
