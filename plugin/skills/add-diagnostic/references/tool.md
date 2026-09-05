@@ -46,6 +46,13 @@ Paths in that JSON are repository-relative, so prefix the repository root before
 Exit code 2 is a bug in the tool rather than a bad argument: the same two fields plus `"unexpected": true`, `exception` and `stackTrace`.
 Report it and stop; re-running the same command will not help.
 
+## When the SDK is too old
+
+`dotnet tool exec` needs the .NET 10 SDK or later, and an older one fails before NuGet is ever consulted, so the failure carries no `NU####` code and none of the rows below apply.
+It arrives as `error: Unrecognized command or argument 'exec'` on an SDK whose `dotnet tool` has no `exec` verb, or as an `MSB` / SDK-resolver message naming the required version when a `global.json` pins one that is not installed.
+Report it with `dotnet --version` and stop.
+It is the machine that is short of a prerequisite, not the repository or the pin, so do not fall back to `dotnet tool install`, `dnx`, or an older version of the package: the pin is what keeps these documents and the tool one release.
+
 ## When the package will not resolve
 
 A failure that names the package rather than the subcommand — `Aetos.RoslynSkills.Tools` could not be resolved, or no version matches the pin — comes from NuGet before the tool ever starts, so it arrives as plain SDK text rather than the JSON above.

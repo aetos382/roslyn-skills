@@ -55,7 +55,7 @@ Add `-nodeReuse:false` to every `dotnet build` and `dotnet msbuild` the workflow
 Every subcommand prints JSON on stdout, failures included, so read what it printed rather than guessing what it would return.
 Its paths are **repository-relative** — `diagnosticIds.path`, `resx[].files`, `docs.directory` and the rest — so prefix `$R/` before passing any of them back to a command or opening it, since every argument but `--doc` is absolute.
 
-`references/tool.md` has the reasons behind each of those, and is the file to open when something goes wrong with the tool itself: a command line the tool rejects, exit code 2, or a package that will not resolve — the last of which has its own decision table and must never be answered by lowering the pin.
+`references/tool.md` has the reasons behind each of those, and is the file to open when something goes wrong with the tool itself: a command line the tool rejects, exit code 2, an SDK too old to carry `dotnet tool exec`, or a package that will not resolve — the last of which has its own decision table, and neither of the last two is ever answered by lowering the pin.
 
 
 ## Workflow
@@ -132,18 +132,23 @@ Draft before asking, so the user reviews concrete text rather than open question
    Only a project with **no descriptor at all** leaves this open, and then it becomes a question with the resx route recommended, naming the exact file that route would use — which `references/resources.md`, "Creating a new resx file", picks, since answering the question is also the consent to create or share that file.
 
 Then print the proposal as a short table in the message (name, ID band/category, title, message, description, target class, where the strings go, documentation yes/no) and, directly after it, ask **one** `AskUserQuestion` round.
-It is the only round in the whole workflow: everything left open by Step 1 (the prefix, when `diagnosticPrefix` is null) and by this step goes into it.
+It is the only round the design goes through: everything Step 1 left open — the prefix when `diagnosticPrefix` is null, and the arrangement each code-fix project reporting `idSharing: none` needs — belongs in it alongside what this step leaves open, so the user answers once and Step 6 then runs without stopping.
 Candidates, in priority order when more than four exist:
 
 1. prefix (only when null; it names every future ID)
 2. where the strings live (only when the project has no descriptor to follow; it is also the consent to create or share a resx file)
-3. severity
-4. `suppressedDiagnosticId` (suppressions only)
-5. message arguments
-6. category
-7. documentation
+3. ID sharing (only when a code-fix project reports `none`; it is the consent to edit that project file, and `AnalyzerProject` is the recommendation)
+4. severity
+5. `suppressedDiagnosticId` (suppressions only)
+6. message arguments
+7. category
+8. documentation
+
+Four questions legitimately fall outside this round, because each depends on something that cannot be known here: an unclear diagnostic-or-suppression classification (Step 2), a partial match against an existing rule (Step 3), a package reference 6d turns out to need, and a URL template `doc-url` cannot resolve on a non-GitHub host.
+Anything else that comes up mid-edit is a sign the draft skipped something rather than a new round to open.
 
 The strings question ranks high because it is a consent, not a preference: without an answer there is no file to write the entries to.
+ID sharing follows it for the same reason, and because it is the one candidate whose omission costs a round: pushed past the four-question cap, 6g has to ask it on its own.
 Category and message arguments come first among the rest because a drafted guess for them is often wrong.
 Documentation is last because the proposal is always *yes* with a concrete path: it counts as offered once it appears in the table, whether or not it also gets a question.
 The same holds for anything else pushed out by the four-question cap, since the user can correct any row in an "Other" answer.
@@ -213,9 +218,9 @@ Perform the edits in this order (6a–6h) so later edits can rely on earlier one
 - **6g.
   ID sharing**: read `idSharing` on **each** code-fix project in `projects[]`, not the repository-wide value.
   A project whose value is anything but `none` already reaches the IDs, so skip that one; act on each project that says `none`, whatever the others say — a repository where one code fix is wired and another is not reports `mixed` at the top level, and the wired one says nothing about the other.
-  For each of them, ask for `AnalyzerProject` (recommended) or `LinkedFile`, then add the `<ProjectReference>` or the linked `<Compile>` item to that project and set the IDs class visibility accordingly.
-  One question covers them all when the answer is the same for each.
-  When `idSharingReliable` is false, `none` only means the detection could not see: say so and ask before adding anything, since the reference may already be there in a project MSBuild failed to evaluate.
+  For each of them, apply the arrangement Step 4 asked for — `AnalyzerProject` (recommended) or `LinkedFile` — by adding the `<ProjectReference>` or the linked `<Compile>` item to that project and setting the IDs class visibility accordingly.
+  One answer covers them all when it is the same for each; ask here only when the four-question cap pushed the question out of that round.
+  When `idSharingReliable` is false, `none` only means the detection could not see: say so in the Step 4 question and add nothing without an answer, since the reference may already be there in a project MSBuild failed to evaluate.
   When `diagnosticIdsProject` is null the IDs file belongs to no project, so add the linked `<Compile>` item to each side (`SharedFile`) instead of moving it.
 - **6h.
   Config file**: create or update `.claude/roslyn-skills/add-diagnostic.md` (`examples/add-diagnostic.md`, creating the directory when missing) only when a decision was made that detection cannot reproduce next time: a non-GitHub URL template, a docs layout the scan misreads, a descriptor helper worth naming in the notes.
@@ -246,6 +251,7 @@ Where `.gitattributes` sets `eol`, it wins over what the working copy happens to
 ### Step 8: Report
 
 Summarize in a short list: the ID and name, every file changed or created, the `helpLinkUri` (or that it was omitted), and — when a new resx was created whose class is generated at build time — that the class lives in `obj/` and an unbuilt clone shows it as undefined until the first build, and the next steps the skill cannot do: regenerate `Resources.Designer.cs` in Visual Studio when flagged, implement the analysis / suppression logic, add tests, and translate the satellite resx files when the strings went to resx.
+When that regeneration is one of them, say that the build 6e and Step 7 both skipped still has to happen afterwards, and that it is what proves the release-tracking row: RS2000 and RS2001 are the two the run never got to observe, so a category or severity that disagrees with the descriptor is still unreported at this point.
 
 ## Rules that always hold
 
@@ -266,7 +272,7 @@ Summarize in a short list: the ID and name, every file changed or created, the `
 
 ### Reference files
 
-- **`references/tool.md`** — running the helper tool: how the command line has to be spelled, where it must run from, what its JSON promises, and the decision table for a package that will not resolve.
+- **`references/tool.md`** — running the helper tool: how the command line has to be spelled, where it must run from, what its JSON promises, an SDK too old for `dotnet tool exec`, and the decision table for a package that will not resolve.
 - **`references/id-conventions.md`** — naming rules, prefix and band scheme, IDs file layout, suppression IDs, and how real projects (StyleCop, xunit, Roslynator, Meziantou) share IDs with code-fix projects.
   It also carries what `next-id` answers with.
 - **`references/descriptors.md`** — DiagnosticDescriptor / SuppressionDescriptor patterns, literal and resx strings, text format rules (RS1031–RS1033), the severity spellings, `SupportedDiagnostics`, required `customTags`, source generator descriptors.
