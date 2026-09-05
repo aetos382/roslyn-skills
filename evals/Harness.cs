@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -27,8 +26,16 @@ internal static partial class Harness
     [GeneratedRegex(@"^.*?warning (?<code>[A-Za-z][A-Za-z0-9]*):.*$", RegexOptions.Multiline)]
     private static partial Regex WarningPattern { get; }
 
-    /// <summary>The repository this file lives in, found from the compiler's own view of where it is.</summary>
-    public static string RepoRoot { get; } = Directory.GetParent(ThisFile())!.Parent!.FullName;
+    /// <summary>
+    /// The repository this harness belongs to, found by walking up from the assembly until the solution file
+    /// turns up.
+    ///
+    /// Not from <c>CallerFilePath</c>, which is the obvious way and a wrong one: a continuous integration build
+    /// sets <c>ContinuousIntegrationBuild</c>, which maps source paths to a placeholder root, so the compiler
+    /// bakes in <c>/_/evals/Harness.cs</c> and every path derived from it points at a directory that does not
+    /// exist. It fails only on the machine nobody is watching.
+    /// </summary>
+    public static string RepoRoot { get; } = FindRepoRoot();
 
     public static string SkillDirectory(string skill) =>
         Path.Combine(RepoRoot, "plugin", "skills", skill);
@@ -291,5 +298,21 @@ internal static partial class Harness
         return new JsonObject { ["sdk"] = sdk }.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static string ThisFile([CallerFilePath] string path = "") => path;
+    private static string FindRepoRoot()
+    {
+        const string Marker = "RoslynSkills.slnx";
+
+        // Every project here builds into artifacts/ at the root, so the assembly is always some way below it.
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, Marker)))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"no {Marker} above {AppContext.BaseDirectory}, so the repository this eval harness belongs to "
+            + "cannot be found. It has to run from inside a build of that repository.");
+    }
 }
