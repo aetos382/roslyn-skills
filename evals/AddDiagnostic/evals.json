@@ -20,7 +20,7 @@
         { "text": "AnalyzerReleases.Unshipped.md に Naming の行が追加されている", "kind": "contains", "glob": "src/Acme.Analyzers/AnalyzerReleases.Unshipped.md", "pattern": "ACM3001\\s*\\|\\s*Naming" },
         { "text": "ドキュメント ページが作成されている", "kind": "fileExists", "glob": "docs/rules/ACM3001.md" },
         { "text": "ドキュメントのインデックスに行が追加されている", "kind": "contains", "glob": "docs/rules/README.md", "pattern": "ACM3001" },
-        { "text": "helpLinkUri が新しいページを指している", "kind": "anyContains", "glob": "src/Acme.Analyzers/*.cs", "pattern": "https://github\\.com/acme/acme-analyzers/blob/[^\"]+/docs/rules/ACM3001\\.md" },
+        { "text": "helpLinkUri が新しいページを指している", "kind": "anyContains", "glob": "src/Acme.Analyzers/*.cs", "pattern": "https://github\\.com/aetos382/acme-analyzers/blob/[^\"]+/docs/rules/ACM3001\\.md" },
         { "text": "コードフィックス プロジェクトが IDs を参照できるようになっている (6g)", "kind": "contains", "glob": "src/Acme.Analyzers.CodeFixes/Acme.Analyzers.CodeFixes.csproj", "pattern": "ProjectReference|Compile\\s+Include" },
         { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
         { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }

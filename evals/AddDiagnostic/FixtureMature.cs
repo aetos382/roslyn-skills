@@ -85,7 +85,7 @@ internal static partial class AddDiagnosticFixtures
                     DiagnosticSeverity.Warning,
                     isEnabledByDefault: true,
                     description: new LocalizableResourceString(nameof(Resources.AbstractTypeShouldNotHavePublicConstructorDescription), Resources.ResourceManager, typeof(Resources)),
-                    helpLinkUri: "https://github.com/acme/acme-analyzers/blob/main/docs/rules/ACM1001.md");
+                    helpLinkUri: "https://github.com/aetos382/acme-analyzers/blob/main/docs/rules/ACM1001.md");
 
                 private static readonly DiagnosticDescriptor TaskShouldBeAwaited = new(
                     DiagnosticIds.TaskShouldBeAwaited,
@@ -95,7 +95,7 @@ internal static partial class AddDiagnosticFixtures
                     DiagnosticSeverity.Warning,
                     isEnabledByDefault: true,
                     description: new LocalizableResourceString(nameof(Resources.TaskShouldBeAwaitedDescription), Resources.ResourceManager, typeof(Resources)),
-                    helpLinkUri: "https://github.com/acme/acme-analyzers/blob/main/docs/rules/ACM2001.md");
+                    helpLinkUri: "https://github.com/aetos382/acme-analyzers/blob/main/docs/rules/ACM2001.md");
 
                 public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
                     [AbstractTypeShouldNotHavePublicConstructor, TaskShouldBeAwaited];
@@ -278,7 +278,7 @@ internal static partial class AddDiagnosticFixtures
 
         return new Fixture(
             "mature",
-            "https://github.com/acme/acme-analyzers.git",
+            "https://github.com/aetos382/acme-analyzers.git",
             "src/Acme.Analyzers/Acme.Analyzers.csproj",
             files);
     }

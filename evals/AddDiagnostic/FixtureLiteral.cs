@@ -115,7 +115,7 @@ internal static partial class AddDiagnosticFixtures
 
         return new Fixture(
             "literal",
-            "https://github.com/northwind/northwind-analyzers.git",
+            "https://github.com/aetos382/northwind-analyzers.git",
             "src/Northwind.Analyzers/Northwind.Analyzers.csproj",
             files);
     }

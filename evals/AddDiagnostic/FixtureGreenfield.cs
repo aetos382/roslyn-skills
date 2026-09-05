@@ -62,7 +62,7 @@ internal static partial class AddDiagnosticFixtures
 
         return new Fixture(
             "greenfield",
-            "https://github.com/fabrikam/fabrikam-analyzers.git",
+            "https://github.com/aetos382/fabrikam-analyzers.git",
             "src/Fabrikam.Analyzers/Fabrikam.Analyzers.csproj",
             files);
     }
