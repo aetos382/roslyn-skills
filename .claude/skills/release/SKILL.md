@@ -2,7 +2,7 @@
 name: release
 description: This skill should be used when the user asks to "release", "cut a release", "publish a new version", "バージョンを上げてリリース", or names a version number to ship this repository at. Rewrites the tool version the skills pin, commits it, and starts the Draft a release workflow at that same number. Not for publishing to NuGet.org, which stays a manual step.
 argument-hint: <version to release, such as 0.2.0>
-allowed-tools: Read, Edit, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Edit, Grep, Bash
 ---
 
 # Release
@@ -52,10 +52,11 @@ rg -n 'Aetos\.RoslynSkills\.Tools@' plugin | grep -vF "Aetos.RoslynSkills.Tools@
 That must print nothing, and `jq -r .version plugin/.claude-plugin/plugin.json` must print the new version.
 `draft-release.yml` runs the same check and fails the build, but finding it here costs a workflow run less.
 
-## 4. Show the diff and confirm
+## 4. Show the diff
 
-Show `git diff` and ask the user once, with `AskUserQuestion`, before committing.
-Everything after this point is visible outside the machine.
+Show `git diff` and go on to step 5 without asking.
+Invoking this skill at a version is the decision; asking again buys nothing, and the step that is genuinely irreversible — publishing the draft, which sends the package to NuGet.org — stays in the user's hands either way.
+The diff is shown for the record, so a wrong pin is visible before the push rather than in the workflow log.
 
 ## 5. Commit, push, dispatch
 
