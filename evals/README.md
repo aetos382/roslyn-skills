@@ -37,8 +37,9 @@ dotnet run --project evals -- report                   # every graded run so far
 dotnet run --project evals -- check                    # the evals.json files are well formed
 ```
 
-`list` prints one labelled field per line rather than columns, so a prompt gets the width of the terminal and an indent of its own instead of being truncated into a column.
-`--skill` and `--id` are the two fields of that listing; `new-run` names the skill's other ids when given one it does not recognize.
+`list` prints, per eval, the two fields that name it and the one sentence saying what it guarantees.
+Which fixture it uses and what will be said to the agent are not there: choosing an eval is a question of what it establishes, and the run itself carries the rest.
+`new-run` names the skill's other ids when given one it does not recognize.
 
 `new-run` creates a directory under `Temp/evals/<skill>/` in this workspace and fills it with:
 
@@ -79,12 +80,15 @@ An eval in that skill's `evals.json` is a prompt against a fixture, plus the ass
 ```json
 {
   "id": "literal-strings-and-docs",
+  "summary": "…what this eval guarantees, in one sentence…",
   "fixture": "literal",
   "prompt": "…what the repository's owner would have typed…",
   "expected_output": "…what should happen, in prose, for the human reading the results…",
   "assertions": [ … ]
 }
 ```
+
+`summary` is what `list` shows, so it is one sentence and `check` keeps it that way; `expected_output` is the long form, for reading a finished run rather than for picking one.
 
 Assertions are graded mechanically, against the scan and the files themselves.
 `text` is what the report shows, so write it as the thing being checked rather than as the mechanism.

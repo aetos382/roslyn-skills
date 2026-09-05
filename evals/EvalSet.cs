@@ -14,6 +14,9 @@ namespace Aetos.RoslynSkills.Evals;
 /// </summary>
 internal static class EvalSet
 {
+    /// <summary>How long a summary may be. Long enough for a sentence, short enough that it is not a paragraph.</summary>
+    private const int SummaryLimit = 120;
+
     /// <summary>One line per problem found, empty when every eval of every skill is well formed.</summary>
     public static IReadOnlyList<string> Validate()
     {
@@ -38,6 +41,20 @@ internal static class EvalSet
                 if (eval["prompt"] is null || eval["expected_output"] is null)
                 {
                     problems.Add($"{where}: prompt and expected_output are both required");
+                }
+
+                // The summary is what `list` shows, and what someone reads to decide which eval to run. It has to
+                // stay a sentence: allowed to grow into a paragraph it becomes a second expected_output, and the
+                // listing goes back to being something nobody reads.
+                if (eval["summary"]?.ToString() is not { } summary)
+                {
+                    problems.Add($"{where}: a summary is required, saying in one sentence what the eval guarantees");
+                }
+                else if (summary.Length > SummaryLimit || summary.Contains('\n', StringComparison.Ordinal))
+                {
+                    problems.Add(
+                        $"{where}: the summary is {summary.Length} characters over {SummaryLimit} or spans lines; "
+                        + "the long form belongs in expected_output");
                 }
 
                 var fixture = eval["fixture"]?.ToString();

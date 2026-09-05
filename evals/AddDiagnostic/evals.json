@@ -3,6 +3,7 @@
   "evals": [
     {
       "id": "mature-new-category",
+      "summary": "規約の揃ったリポジトリで、新しいカテゴリのバンドを起こして診断を 1 件足し、resx・リリース追跡・ドキュメント・ID 共有まで揃うこと。",
       "fixture": "mature",
       "prompt": "メソッド名が Async で終わっているのに Task も ValueTask も返していないメソッドを警告するルールを追加してください。命名規則 (Naming) のカテゴリで、重要度は Warning です。",
       "expected_output": "Naming は新しいカテゴリなので、未使用の次のバンド 3 が割り当てられ ACM3001 になる。DiagnosticIds.cs に `// Naming (ACM3xxx)` ヘッダーと定数、DiagnosticCategories.cs に Naming 定数、AcmeAnalyzer にディスクリプタと SupportedDiagnostics への登録、Resources.resx と Resources.ja.resx の両方に 3 エントリ、AnalyzerReleases.Unshipped.md に 1 行、docs/rules/ACM3001.md とインデックス行、helpLinkUri。コードフィックス プロジェクトは idSharing none なので ProjectReference が追加される。",
@@ -27,6 +28,7 @@
     },
     {
       "id": "mature-duplicate",
+      "summary": "同じパターンを報告する診断が既にあるとき、新しい ID を採番せず、既にあったものとして報告すること。",
       "fixture": "mature",
       "prompt": "await されずに捨てられている Task を検出して警告するルールを追加してほしい。",
       "expected_output": "ACM2001 (TaskShouldBeAwaited) が同じパターンを既に報告しているので、Step 3 が完全一致として検出し、新しい ID を採番しない。既存 ID の成果物チェックリストを示し、欠けているものだけを補う。ここでは全て揃っているので、リポジトリは無変更のまま「既にあった」と報告する。",
@@ -43,6 +45,7 @@
     },
     {
       "id": "greenfield-bootstrap",
+      "summary": "何もないアナライザー プロジェクトで、IDs ファイルから resx まで一式を作って最初の診断を足せること。",
       "fixture": "greenfield",
       "prompt": "This is our first analyzer rule. Warn when a public method accepts a CancellationToken parameter and never forwards it to the calls it makes. Category Usage, severity Warning. We want to use FAB as our diagnostic ID prefix.",
       "expected_output": "何もない状態からの立ち上げ。DiagnosticIds.cs と DiagnosticCategories.cs が作成され、Usage が最初の未使用バンド 1 を取って FAB1001 になる。ディスクリプタを持つクラスが無いので文字列の置き場所は質問になり、推奨の resx ルートが選ばれて Resources.resx が新規作成され csproj に登録される。AnalyzerReleases の Shipped/Unshipped 対が作成され、Shipped はコメント 2 行のみ。ドキュメントは docs.suggestedDirectory に作られる。",
@@ -66,6 +69,7 @@
     },
     {
       "id": "literal-strings-and-docs",
+      "summary": "隣のディスクリプタがリテラル文字列なら resx を作らず、そのリポジトリのバンド対応に従って採番すること。",
       "fixture": "literal",
       "prompt": "lock の対象にしているフィールドが readonly でない場合に警告するルールを追加してください。カテゴリは Usage、重要度は Warning です。",
       "expected_output": "隣のディスクリプタがリテラル文字列を渡しているので同じルートを取り、resx は作らない。バンドの対応は Usage = 1 なので NWD1003。ドキュメント ディレクトリが無いので docs.suggestedDirectory に作成され、helpLinkUri がそこを指す。",
@@ -85,6 +89,7 @@
     },
     {
       "id": "literal-suppression",
+      "summary": "抑制が独立した ID 連番と SuppressionIds.cs を持ち、AnalyzerReleases には行を足さないこと。",
       "fixture": "literal",
       "prompt": "CA1515 (型を internal にできる) は MSTest のテスト クラスに対しては誤検知なので、テスト クラスに対してだけ抑制するサプレッサーを追加してください。",
       "expected_output": "抑制なので SuppressionIds.cs が新規作成され、独立した連番の先頭 NWDS0001 になる。DiagnosticSuppressor クラスに SuppressionDescriptor と SupportedSuppressions が書かれ、文字列は Justification だけ。AnalyzerReleases には行を追加せず、リポジトリに suppressionDocs も抑制の表も無いのでドキュメント ページも作らない。",
