@@ -95,7 +95,8 @@ roslyn-skills/
 ├── plugin/           # what an install delivers, and nothing else
 │   └── skills/       # one directory per skill, with its references and examples beside it
 ├── src/              # the Aetos.RoslynSkills.Tools tool the skills invoke
-└── tests/            # unit tests for the tool
+├── tests/            # unit tests for the tool
+└── evals/            # end-to-end evals: an agent holding the skill, against generated repositories
 ```
 
 `marketplace.json` names `plugin/` as the plugin's source, so an install copies that directory alone into the plugin cache; the tool and its tests never reach it.
@@ -120,6 +121,18 @@ dotnet test tests/Aetos.RoslynSkills.Tools.Tests
 
 The test project references the tool project and sees its internals through `InternalsVisibleTo`.
 What is covered is the parsing the tool does on input it does not control: the settings file, the command line, the ID constants and band headers, and the file-shape detection that decides which directories are skipped.
+
+## Evals
+
+The tests prove the tool behaves; they cannot tell whether an agent holding the skill edits a repository correctly, which is what a change to the skill is actually trying to move.
+
+```bash
+dotnet run evals/eval.cs -- list
+```
+
+`evals/` generates throwaway analyzer repositories in three different states, hands an agent a task in one of them, and grades what it left behind against the convention scan and the compiler.
+They are run by hand rather than in CI, because an agent run is neither free nor deterministic.
+See `evals/README.md` for the loop and for what the assertions deliberately leave to human review.
 
 ## License
 

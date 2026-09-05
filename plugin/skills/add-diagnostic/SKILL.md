@@ -211,6 +211,7 @@ Perform the edits in this order (6a–6h) so later edits can rely on earlier one
   This build is also where warnings introduced by 6c first appear, IDE0090 and IDE0303 among them: fix them now rather than waiting for Step 7.
   Then append the row `ID | Category | Severity | <short sentence describing the rule>` under `### New Rules`.
   When the pair is missing, create `AnalyzerReleases.Unshipped.md` from `examples/` and `AnalyzerReleases.Shipped.md` with **only its two comment lines**; copying the sample release section verbatim declares rules that do not exist and earns RS2002.
+  Neither file needs an `<AdditionalFiles>` item, and creating one is a mistake rather than a precaution: `Microsoft.CodeAnalysis.Analyzers` adds both from its own targets as soon as they exist in the project directory, so a hand-written item duplicates what the package already contributes, and the project file staying untouched is the expected outcome rather than a step that was forgotten.
   Skip this whole edit for suppressions, and skip the build when 6d reported `requiresVisualStudioRegeneration`.
 - **6f.
   Documentation** (when requested): create the directory when it does not exist, then the page at the path used in 6c, following the newest existing page or `examples/rule-doc-template.md` when there is none; add the index row in sorted position, creating the index from `examples/rules-index-template.md` when the directory is new (`references/documentation.md`).

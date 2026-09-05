@@ -2,7 +2,7 @@
 
 `Microsoft.CodeAnalysis.Analyzers` ships a release-tracking analyzer (rules RS2000–RS2008).
 It reads two additional files next to the analyzer project and reports RS2000 for every `DiagnosticDescriptor` whose ID is not listed in either.
-The package's build props add both files as `AdditionalFiles` automatically when they exist in the project directory, so no csproj change is normally needed.
+`Microsoft.CodeAnalysis.Analyzers.targets`, which the package imports, adds both files as `AdditionalFiles` on its own when they exist in the project directory, so no csproj change is normally needed.
 
 ## Files
 
@@ -57,7 +57,7 @@ CTS1001 | Design | Warning | Design | Info | Promoted after stabilizing
    - `AnalyzerReleases.Shipped.md` with only the two comment lines (`; Shipped analyzer releases` and the help URL).
    - `AnalyzerReleases.Unshipped.md` from `examples/AnalyzerReleases.Unshipped.md`, replacing the rows.
      Do not add `<AdditionalFiles>` items for them.
-     Recent SDKs register `AnalyzerReleases.*.md` as additional files implicitly, so their absence from the project file means nothing; adding the items by hand is noise, and in the worst case a duplicate.
+     `Microsoft.CodeAnalysis.Analyzers` contributes both items from its own targets, conditioned on the files existing in the project directory, so their absence from the project file means nothing; adding the items by hand duplicates what the package already contributes.
 
 Whether tracking actually runs is only observable, never inferable: build once while the descriptor exists and its row does not, and look for RS2000 (SKILL.md 6e).
 A clean build proves nothing, because a tracking analyzer that never loads also produces one.
@@ -93,4 +93,5 @@ Either one proves tracking runs, at the cost of one build and with no file to re
 A clean build after the row is added proves nothing: it is equally consistent with the analyzer never having run.
 
 When neither appears, the package is missing: add `Microsoft.CodeAnalysis.Analyzers` with `PrivateAssets="all"` and build again.
-Do **not** add `<AdditionalFiles>` items for the release files — the SDK registers them implicitly, and their absence from the project file is not a defect.
+Do **not** add `<AdditionalFiles>` items for the release files: the package registers them itself, and their absence from the project file is not a defect.
+The registration is conditioned on the files being in the project directory at evaluation time, which is why a pair created in 6e is picked up by the next build without the project file changing — and why a pair placed in a subdirectory is not picked up at all.
