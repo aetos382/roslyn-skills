@@ -35,7 +35,7 @@ From Bash, where each call starts a fresh shell:
 export DOTNET_CLI_UI_LANGUAGE=en VSLANG=1033        # English output from every dotnet command
 S="/absolute/path/to/the/scratch/directory"         # created once: S="$(mktemp -d)"; echo "$S"
 R="/absolute/path/to/the/repository"
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic"   # not dnx, keep the --
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.6 -- add-diagnostic"   # not dnx, keep the --
 cd "$S"                                             # never run the tool from inside $R
 
 $T find-conventions --path "$R" --summary > conventions.json    # then read that file
@@ -293,7 +293,7 @@ When that regeneration is one of them, say that the build 6e and Step 7 both ski
 
 ### Tool subcommands
 
-`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic <subcommand>`, see "The helper tool" above.
+`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.6 -- add-diagnostic <subcommand>`, see "The helper tool" above.
 
 - **`find-conventions`** — repository convention detection (JSON).
 - **`next-id`** — next free ID in a category band or suppression sequence.

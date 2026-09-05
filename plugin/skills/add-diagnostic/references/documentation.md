@@ -68,7 +68,7 @@ Behaviour:
 Use the tool:
 
 ```bash
-dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic doc-url \
+dotnet tool exec Aetos.RoslynSkills.Tools@0.1.6 -- add-diagnostic doc-url \
   --doc docs/rules/CTS1001.md --path /absolute/path/to/the/repository
 ```
 
