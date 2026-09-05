@@ -99,7 +99,6 @@ internal static partial class AddDiagnosticFixtures
             """,
     };
 
-    // lang=xml
     private const string ResxHeader = """
         <?xml version="1.0" encoding="utf-8"?>
         <root>

@@ -11,8 +11,13 @@ namespace Aetos.RoslynSkills.Evals;
 /// that skill's own directory, so adding a skill is a directory plus one row in <see cref="Skills"/>.
 /// </summary>
 /// <param name="Name">
-/// The skill's directory name under both <c>evals/</c> and <c>plugin/skills/</c>. The two have to agree: the
-/// prompt points the agent at the skill, and the pinned tool version is read from that skill's SKILL.md.
+/// The skill's own name, which is its directory under <c>plugin/skills/</c>. The prompt points the agent there,
+/// and the pinned tool version is read from that directory's SKILL.md.
+/// </param>
+/// <param name="Directory">
+/// The directory under <c>evals/</c> holding this skill's prompts and fixtures. Kept apart from
+/// <paramref name="Name"/> because the two follow different naming rules: a skill is named the way a slash
+/// command is, and a folder of C# inside a project is named the way C# folders are.
 /// </param>
 /// <param name="Fixtures">Fixture name to the function that builds it.</param>
 /// <param name="Scan">
@@ -22,6 +27,7 @@ namespace Aetos.RoslynSkills.Evals;
 /// </param>
 internal sealed record SkillEvals(
     string Name,
+    string Directory,
     IReadOnlyDictionary<string, Func<Fixture>> Fixtures,
     IReadOnlyList<string>? Scan);
 
@@ -31,6 +37,7 @@ internal static class Skills
     {
         ["add-diagnostic"] = new(
             "add-diagnostic",
+            "AddDiagnostic",
             AddDiagnosticFixtures.All,
             ["add-diagnostic", "find-conventions", "--path", "{repo}", "--summary"]),
     };

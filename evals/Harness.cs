@@ -33,8 +33,13 @@ internal static partial class Harness
     public static string SkillDirectory(string skill) =>
         Path.Combine(RepoRoot, "plugin", "skills", skill);
 
-    /// <summary>Where a skill's prompts and fixtures live, one directory per skill.</summary>
-    public static string EvalsDirectory(string skill) => Path.Combine(RepoRoot, "evals", skill);
+    /// <summary>
+    /// Where a skill's prompts and fixtures live, one directory per skill. The skill names it, but does not name
+    /// the folder: <see cref="SkillEvals.Directory"/> does, because a slash command and a folder of C# are named
+    /// by different conventions.
+    /// </summary>
+    public static string EvalsDirectory(string skill) =>
+        Path.Combine(RepoRoot, "evals", Skills.Get(skill).Directory);
 
     /// <summary>
     /// Runs live under the workspace's own <c>Temp/</c>, which git already ignores, so that what an eval produced

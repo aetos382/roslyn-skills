@@ -1,7 +1,3 @@
-using System.Collections.Generic;
-
-using Aetos.RoslynSkills.Evals;
-
 namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
 
 internal static partial class AddDiagnosticFixtures
@@ -112,7 +108,6 @@ internal static partial class AddDiagnosticFixtures
             }
             """;
 
-        // lang=xml
         files["src/Acme.Analyzers/Resources.resx"] = ResxHeader + """
               <data name="AbstractTypeShouldNotHavePublicConstructorDescription" xml:space="preserve">
                 <value>A public constructor on an abstract type can never be called from outside the type's own hierarchy. Declare it protected instead.</value>
@@ -135,7 +130,6 @@ internal static partial class AddDiagnosticFixtures
             </root>
             """;
 
-        // lang=xml
         files["src/Acme.Analyzers/Resources.ja.resx"] = ResxHeader + """
               <data name="AbstractTypeShouldNotHavePublicConstructorDescription" xml:space="preserve">
                 <value>抽象型の public コンストラクターは、その型の派生階層の外からは決して呼び出せません。protected として宣言してください。</value>

@@ -15,7 +15,7 @@ evals/                       # Aetos.RoslynSkills.Evals, the harness, which know
 ├── Program.cs, Commands/     # the CLI
 ├── Harness.cs, Assertions.cs # building a fixture, running the scan and the compiler, grading the result
 ├── Skills.cs                 # the registry every skill adds a row to
-└── add-diagnostic/           # one directory per skill
+└── AddDiagnostic/            # one directory per skill
     ├── README.md             # what these evals cover, and what they leave to a human
     ├── evals.json            # the prompts and their assertions
     └── Fixture*.cs           # the repositories they run against
@@ -23,8 +23,8 @@ evals/                       # Aetos.RoslynSkills.Evals, the harness, which know
 
 Only `evals.json` and the fixtures are a skill's own; everything else is shared.
 The harness is a normal project in the solution, so a break in it fails the build like anything else, and `tests/Aetos.RoslynSkills.Evals.Tests` covers the parts that decide whether an assertion passed — a bug there would not announce itself, since the run would simply report PASS.
-Adding a skill is a directory of the same shape plus one row in `Skills.cs` naming its fixtures and, optionally, the tool command that takes a structured reading of a repository for the `json*` assertions to work from.
-The directory name has to match the skill's own under `plugin/skills/`, since that is where the prompt points the agent and where the pinned tool version is read from.
+Adding a skill is a directory of the same shape plus one row in `Skills.cs`, naming the skill, the directory holding its evals, its fixtures and, optionally, the tool command that takes a structured reading of a repository for the `json*` assertions to work from.
+The skill's name is its directory under `plugin/skills/`, which is where the prompt points the agent and where the pinned tool version is read from; the directory here is named the way the rest of the C# is, so the two are separate fields rather than one.
 
 ## The loop
 
@@ -73,7 +73,7 @@ It is the only view of the question round the skill actually produced: how many 
 
 ## Writing an eval
 
-An eval in `evals/<skill>/evals.json` is a prompt against a fixture, plus the assertions its result has to satisfy.
+An eval in that skill's `evals.json` is a prompt against a fixture, plus the assertions its result has to satisfy.
 
 ```json
 {

@@ -97,7 +97,7 @@ roslyn-skills/
 ├── src/              # the Aetos.RoslynSkills.Tools tool the skills invoke
 ├── tests/            # unit tests for the tool
 └── evals/            # end-to-end evals: an agent holding a skill, against generated repositories
-    └── <skill>/      # one directory per skill: its prompts and the repositories they run against
+    └── AddDiagnostic/ # one directory per skill: its prompts and the repositories they run against
 ```
 
 `marketplace.json` names `plugin/` as the plugin's source, so an install copies that directory alone into the plugin cache; the tool and its tests never reach it.
@@ -133,7 +133,7 @@ dotnet run --project evals -- list
 
 `evals/` generates throwaway repositories, hands an agent a task in one of them, and grades what it left behind against the skill's own scan of the result and against the compiler.
 They are run by hand rather than in CI, because an agent run is neither free nor deterministic.
-The harness knows nothing about any one skill: `evals/<skill>/` holds the prompts and the fixtures, and a skill joins in by adding such a directory.
+The harness knows nothing about any one skill: one directory under `evals/` holds each skill's prompts and fixtures, and a skill joins in by adding such a directory.
 See `evals/README.md` for the loop, and each skill's own README for what its assertions deliberately leave to human review.
 
 ## License

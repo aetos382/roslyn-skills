@@ -1,7 +1,3 @@
-using System.Collections.Generic;
-
-using Aetos.RoslynSkills.Evals;
-
 namespace Aetos.RoslynSkills.Evals.AddDiagnostic;
 
 internal static partial class AddDiagnosticFixtures
@@ -31,7 +27,6 @@ internal static partial class AddDiagnosticFixtures
                 <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
                 <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
               </ItemGroup>
-
 
             </Project>
             """;
