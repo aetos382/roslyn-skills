@@ -60,7 +60,7 @@ Existing entries are left where they are; new entries go after the last entry wh
 Because each culture file gets different text, run the command once per file with that file's own entries JSON:
 
 ```bash
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.4 -- add-diagnostic"
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic"
 $T add-resx-entries --resx /repo/src/A/Resources.resx \
   --ids-file /repo/src/A/DiagnosticIds.cs --entries /scratch/entries.en.json
 $T add-resx-entries --resx /repo/src/A/Resources.ja.resx \

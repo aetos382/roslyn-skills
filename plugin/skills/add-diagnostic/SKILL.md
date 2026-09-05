@@ -32,7 +32,7 @@ From Bash:
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
 export DOTNET_CLI_UI_LANGUAGE=en VSLANG=1033        # English output from every dotnet command, see below
-T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.4 -- add-diagnostic"   # not dnx, see below
+T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic"   # not dnx, see below
 R="/absolute/path/to/the/repository"
 
 $T find-conventions --path "$R" --summary > conventions.json    # then read that file
@@ -349,7 +349,7 @@ Summarize in a short list: the ID and name, every file changed or created, the `
 
 ### Tool subcommands
 
-`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.4 -- add-diagnostic <subcommand>`, see "The helper tool" above.
+`dotnet tool exec Aetos.RoslynSkills.Tools@0.1.5 -- add-diagnostic <subcommand>`, see "The helper tool" above.
 
 - **`find-conventions`** — repository convention detection (JSON).
 - **`next-id`** — next free ID in a category band or suppression sequence.
