@@ -45,7 +45,7 @@ Which fixture it uses and what will be said to the agent are not there: choosing
 
 | Path | What it is |
 |------|------------|
-| `fixture/` | the generated repository, already a git repository with a remote so URL resolution works |
+| `fixture/` | the generated repository, committed in its starting state, so `git diff` in it is exactly what the agent did. Set up as a clone — a remote, a remote-tracking branch and an `origin/HEAD` — so URL resolution has what it reads |
 | `prompt.md` | the task to hand an agent that has the skill |
 | `prompt-baseline.md` | the same task with no skill, for the comparison run |
 | `baseline/scan.json` | what the skill's scan command saw before the agent touched anything |
@@ -78,6 +78,24 @@ The agent that just followed the skill is the only witness to any of that, and n
 It is written either way, saying so in as many words when nothing came up, because a missing file cannot tell "the skill gave me no trouble" apart from "the run never got this far".
 That leaves the other risk, which is an agent producing feedback because it was asked rather than because there was any, so the prompt says plainly that inventing something is what would make the file worthless.
 Read what turns up as a lead rather than as a finding — it is one run's impression, and the fix belongs in the skill only once you can see the same thing in the documents yourself.
+
+### Reading a finished run
+
+Start with the diff, not with `outputs/`:
+
+```bash
+git -C <run>/fixture diff
+```
+
+The fixture is committed in its starting state, so that diff is the agent's work and nothing else — and it is the only place the things no assertion decides are visible: whether a title reads as a title, whether the message arguments are the right ones, whether a Japanese resx entry is a translation or the English pasted twice.
+What the agent says it did is in `outputs/report.md`, and the two are worth reading in that order, since a report is a claim about the diff.
+
+The rest is for when something is off rather than for every run.
+`build.log` says which warning the `build` assertion counted; `scan.json` against `baseline/scan.json` says what the skill's own scan made of the result, which is what a puzzling `json*` failure usually turns on; `grading.json` is the console output kept, for comparing one run against another later.
+
+`scratch/` is worth a look now and then, because no assertion goes near it.
+It holds what the agent worked with: the scan output it fetched, the entries JSON it passed to the tool, the copies 6d is told to take before touching a resx.
+Those copies being there is the only evidence that step ran at all, and a scratch directory that is empty at the end of a run means the work happened somewhere the skill said it should not.
 
 ## Writing an eval
 
