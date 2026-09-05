@@ -12,10 +12,14 @@ internal sealed class TempRepository : IDisposable
 {
     private readonly TestContext _context;
 
-    public TempRepository(TestContext context)
+    /// <param name="name">
+    /// What to call the directory. A class or assembly fixture has to pass one: <c>TestContext.TestName</c>
+    /// belongs to a running test and throws outside one.
+    /// </param>
+    public TempRepository(TestContext context, string? name = null)
     {
         this._context = context;
-        this.Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "roslyn-skills-tests", $"{context.TestName}-{Guid.NewGuid():N}"));
+        this.Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "roslyn-skills-tests", $"{name ?? context.TestName}-{Guid.NewGuid():N}"));
         Directory.CreateDirectory(this.Root);
     }
 

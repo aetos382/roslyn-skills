@@ -234,7 +234,7 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
     3. Otherwise the helper is `internal`/`public` → call it directly.
     4. Otherwise mirror the neighbouring descriptor, or fall back to `new LocalizableResourceString(...)`.
        Add the `private static readonly` field named `{Name}` to the target class, mirroring the neighbouring descriptor's style.
-       A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no initializer**, which throws at runtime; adding the first descriptor means writing `= ImmutableArray.Create(Xxx);`, not appending to an existing list.
+       A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no initializer**, which throws at runtime; adding the first descriptor means initialising it rather than appending to an existing list (see below).
        Severity is one decision spelled three ways, so convert it consistently here and in 5e:
 
   | User says | `defaultSeverity` | AnalyzerReleases `Severity` | `.editorconfig` |
@@ -246,7 +246,12 @@ Perform the edits in this order (5a–5h) so later edits can rely on earlier one
 
   Write the new code in its **conservative** form and let the build ask for the shorter one: the explicit `new DiagnosticDescriptor(...)` rather than a target-typed `new(...)`, and `ImmutableArray.Create(...)` rather than a collection expression.
   Both shorter forms depend on the project (`LangVersion`, a `System.Collections.Immutable` new enough to carry `CollectionBuilderAttribute`, possibly a polyfill package), and detection cannot see all of that; the conservative form compiles either way, and where the repository wants the other one the build says so as IDE0090 or IDE0303, which 5e fixes.
-  Add the field to `SupportedDiagnostics` / `SupportedSuppressions` (source generators have neither; the field alone suffices) with `ImmutableArray.Create(...)`, `LangVersion` 12 or later included.
+  Add the field to `SupportedDiagnostics` / `SupportedSuppressions` (source generators have neither; the field alone suffices), in whichever of these two situations the class is in:
+
+  | The property | What to write |
+  |--------------|---------------|
+  | already lists descriptors | Add the new one the way the existing ones are listed — collection expression, `ImmutableArray.Create`, `CreateRange`, a separate array field. Whatever compiles there compiles for one more entry, and the property is one expression: half of it in another form reads as an accident. |
+  | is declared with no initializer | Initialise it conservatively: `= ImmutableArray.Create<DiagnosticDescriptor>(Xxx);`, `LangVersion` 12 or later included. |
   When the message has two or more placeholders, add a comment above the descriptor listing the argument order.
   Create the class from `examples/AnalyzerWithDescriptor.cs` or `examples/SuppressorWithDescriptor.cs` when it does not exist; leave `Initialize` / `ReportSuppressions` without analysis logic.
 - **5d. resx** (resx route only; the literal route has nothing to do here): write to the resource group Step 3 settled on.

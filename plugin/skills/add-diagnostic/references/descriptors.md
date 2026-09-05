@@ -38,7 +38,8 @@ Before writing a descriptor, read one existing descriptor in the target project 
 | `LocalizableResourceString` with a different resource class name (`Strings`, `SR`, `AnalyzerResources`) | Use that class; `find-conventions` reports it as `resourceClass`. |
 | `Resources.ResourceManager` accessed through a helper (`ResourceHelper.GetLocalizable(...)`) | Use the helper. |
 | No descriptor exists yet, but the resource class has a hand-written partial (`localizableStringHelper` / `localizableStringProperties`) | Follow "Localizable strings" below. |
-| Initialising `SupportedDiagnostics` | Use `ImmutableArray.Create(...)`. A collection expression `[ a, b ]` needs `LangVersion` 12+ **and** a `System.Collections.Immutable` with `CollectionBuilderAttribute`, which a bare `netstandard2.0` project may not have. Switch only when the project's analyzers ask (IDE0303) and it compiles. |
+| `SupportedDiagnostics` already lists descriptors | Add the new one in the same form the existing entries use, whatever that is. |
+| `SupportedDiagnostics` declared with no initializer | `= ImmutableArray.Create<DiagnosticDescriptor>(Xxx);`. A collection expression `[ a, b ]` needs `LangVersion` 12+ **and** a `System.Collections.Immutable` with `CollectionBuilderAttribute` — which a bare `netstandard2.0` project has only if something polyfills it — so it is not what an empty property gets initialised with. Switch only when the project's analyzers ask (IDE0303) and it compiles. |
 
 ## Localizable strings
 
