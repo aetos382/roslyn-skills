@@ -144,7 +144,7 @@ Candidates, in priority order when more than four exist:
 7. category
 8. documentation
 
-Four questions legitimately fall outside this round, because each depends on something that cannot be known here: an unclear diagnostic-or-suppression classification (Step 2), a partial match against an existing rule (Step 3), a package reference 6d turns out to need, and a URL template `doc-url` cannot resolve on a non-GitHub host.
+Four questions legitimately fall outside this round, because each depends on something that cannot be known here: an unclear diagnostic-or-suppression classification (Step 2), a partial match against an existing rule (Step 3), a package reference 6d turns out to need, and a URL `doc-url` reports it cannot build — a host it has no template for, or a `{branch}` it cannot resolve, which are different repairs (`references/documentation.md`, "When doc-url cannot build the URL").
 Anything else that comes up mid-edit is a sign the draft skipped something rather than a new round to open.
 
 The strings question ranks high because it is a consent, not a preference: without an answer there is no file to write the entries to.

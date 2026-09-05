@@ -130,8 +130,12 @@ internal static partial class Harness
     }
 
     /// <summary>
-    /// A real repository with a real remote: <c>doc-url</c> derives the documentation URL from it, and a fixture
-    /// without one would silently exercise the "no remote" branch in every eval.
+    /// A repository shaped like a clone: a remote, a remote-tracking branch, and an <c>origin/HEAD</c> saying
+    /// which one is default.
+    ///
+    /// All three, because a documentation URL is built from all three. `git remote add` alone leaves no
+    /// refs/remotes at all, which is a state a clone is never in, and it made every eval that asks for
+    /// documentation take the "the branch cannot be resolved" path instead of the one being measured.
     /// </summary>
     public static void InitGit(string repo, string remote)
     {
@@ -142,6 +146,10 @@ internal static partial class Harness
         Git(repo, "add", "-A");
         Git(repo, "commit", "-m", "Initial state");
         Git(repo, "remote", "add", "origin", remote);
+
+        // Stood up by hand: there is nothing at the other end of that remote to fetch them from.
+        Git(repo, "update-ref", "refs/remotes/origin/main", "HEAD");
+        Git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
     }
 
     /// <summary>

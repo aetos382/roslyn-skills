@@ -44,6 +44,12 @@ In "When to suppress", show both the `#pragma warning disable <ID>` form and the
 
 The index lists every rule in ID order.
 Add the new row in sorted position, matching the existing column set.
+
+A repository adopting rule pages for the first time already has rules, and they have no pages to link to.
+List them anyway, as rows without a link, so that the index is what it claims to be — a list of every rule — rather than a list of the ones that happen to be documented.
+A missing row reads as "no such rule"; an unlinked row reads as "not written yet", which is what it is.
+Say in the report which rows went in undocumented, since writing those pages is a follow-up the skill is not doing.
+
 When creating the index from scratch use `examples/rules-index-template.md`:
 
 ```markdown
@@ -77,8 +83,19 @@ An absolute path is relativized against the repository root, and one outside the
 
 Resolution order for the template: `--template` argument → `docUrlTemplate` in `.claude/roslyn-skills/add-diagnostic.md` → `https://github.com/{owner}/{repo}/blob/{branch}/{path}` when `origin` points at github.com.
 Owner and repo come from the `origin` remote; the branch is the remote's default branch, read from `origin/HEAD` and then from `gh repo view`.
-The checked out branch is deliberately not a fallback: a help link built from it dies with the branch, so a `{branch}` that cannot be resolved is reported as a failure instead (set it with `git remote set-head origin --auto`).
-The command fails when the host is not GitHub and no template is configured; in that case ask the user for the template (GitLab: `https://gitlab.com/{owner}/{repo}/-/blob/{branch}/{path}`, Azure DevOps and others vary) and store it in the config file.
+The checked out branch is deliberately not a fallback: a help link built from it dies with the branch, so a `{branch}` that cannot be resolved is reported as a failure instead.
+
+### When doc-url cannot build the URL
+
+It reports which piece is missing, and the piece decides the repair, because the two failures are not the same kind of thing.
+
+| Missing | What it means | What to do |
+|---------|---------------|------------|
+| the template (`No docUrlTemplate configured and origin is not on github.com`) | The repository is hosted somewhere this skill has no default for. That is a fact about the repository, and it will be true again next time. | Ask the user for the template (GitLab: `https://gitlab.com/{owner}/{repo}/-/blob/{branch}/{path}`; Azure DevOps and others vary) and **store it as `docUrlTemplate` in the config file**, which is one of the few decisions detection cannot reproduce. |
+| `branch` (`Could not determine: branch`) | `origin/HEAD` is not set and `gh repo view` could not answer. That is a fact about this clone rather than about the repository: `git remote set-head origin --auto` fixes it for good. | Ask, recommending `--template` with the branch the checkout is on, and **do not write a config file**: pinning a branch there would keep building links to it after the default branch moves, and would record a local git gap as if it were a repository convention. Say in the report that `git remote set-head origin --auto` is the actual fix. |
+
+Either way this is one of the four questions Step 4 cannot ask in advance, because it is only visible once 6c runs the command.
+Omitting `helpLinkUri` is the last resort, and only with the user's answer: a documentation page was requested, and a page nothing links to is the outcome nobody asked for.
 
 Verify the URL against the existing descriptors: if they use a different base (a docs site, `aka.ms` links, a tag instead of a branch), the repository has its own convention; follow it and record it as `docUrlTemplate`.
 
