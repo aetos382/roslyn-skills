@@ -242,6 +242,20 @@ public sealed class NextIdTests(TestContext testContext) : IDisposable
     }
 
     /// <summary>
+    /// Guarantees a relative path to a file that is not there is refused even with --prefix, which otherwise makes
+    /// a missing file a legitimate outcome. The path would have resolved against the working directory rather than
+    /// the repository, so allocating a first ID from it can hand out a value the repository has already shipped.
+    /// </summary>
+    [TestMethod]
+    public void ARelativePathToAMissingFileIsRefusedEvenWithAPrefix()
+    {
+        var json = Tool.Json(1, "add-diagnostic", "next-id", "--ids-file", "src/Analyzers/DiagnosticIds.cs", "--prefix", "ABC", "--band", "1");
+
+        Assert.Contains("relative", json["error"]!.ToString());
+        Assert.Contains("absolute path", json["hint"]!.ToString());
+    }
+
+    /// <summary>
     /// Guarantees a repository with no IDs and no band headers is told to pass a prefix rather than being given an
     /// invented one, since the prefix goes into every ID the repository will ever have.
     /// </summary>

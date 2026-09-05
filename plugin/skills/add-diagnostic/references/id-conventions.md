@@ -237,5 +237,7 @@ Three of its outputs are normal results rather than failures, and each says what
 | `"unresolvedCategory": true` | the category has no band header yet | Choose the next unused band digit, re-run with `--prefix <PREFIX> --band <n>`, and have 6a write the `// <Category> (<PREFIX><n>xxx)` header too. |
 
 Without `--prefix`, a path that does not exist is an error rather than an empty file, on purpose: a mistyped path read as empty would restart the numbering and hand out an ID the repository has already shipped.
+`--prefix` opts out of that check, so the command insists on an absolute `--ids-file` whenever the file is not there: a relative path resolves against the working directory, which is the scratchpad rather than the repository, and would otherwise be taken for a file to create.
+A file the workflow has yet to write is named absolutely too, so nothing legitimate is lost.
 Once a band header exists, `--category <name>` alone is enough, since the command reads both the band and the prefix from it.
 Never renumber or reuse an existing value.

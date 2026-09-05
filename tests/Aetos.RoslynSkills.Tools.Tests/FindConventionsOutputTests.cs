@@ -135,7 +135,7 @@ public sealed class FindConventionsOutputTests
 
     /// <summary>
     /// Guarantees each code-fix project carries its own route to the IDs and that a repository whose code fixes
-    /// differ rolls up to "mixed": 5g acts per project, and one repository-wide value would hide the code fix
+    /// differ rolls up to "mixed": 6g acts per project, and one repository-wide value would hide the code fix
     /// that still cannot see the IDs.
     /// </summary>
     [TestMethod]
@@ -149,7 +149,7 @@ public sealed class FindConventionsOutputTests
 
     /// <summary>
     /// Guarantees what an interrupted run left behind is reported rather than read as convention: without this
-    /// list Step 2.5 has to find an empty documentation directory, an empty categories class and a rowless
+    /// list Step 3 has to find an empty documentation directory, an empty categories class and a rowless
     /// release file by listing the repository by hand.
     /// </summary>
     [TestMethod]

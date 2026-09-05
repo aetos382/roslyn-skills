@@ -64,10 +64,20 @@ internal static class NextIdCommand
 
     private static int Run(string idsFile, string? prefix, string? category, int? band, int? digits, bool suppression)
     {
-        // A missing file is only legitimate when the caller says which prefix to start from: step 5a of the skill
-        // creates the file, so step 4 has to be able to allocate the very first ID before it exists. Without
+        // A missing file is only legitimate when the caller says which prefix to start from: step 6a of the skill
+        // creates the file, so step 5 has to be able to allocate the very first ID before it exists. Without
         // --prefix, a mistyped path is indistinguishable from an empty file and would silently restart at 0001.
         var idsFileExists = File.Exists(idsFile);
+        if (!idsFileExists && !Path.IsPathFullyQualified(idsFile))
+        {
+            // With --prefix the caller has opted out of the check above, so a relative path — which resolved
+            // against the working directory rather than the repository — would be read as a file to create and
+            // allocate a first ID for a repository that may already have shipped one. A file that does not exist
+            // yet can still be named absolutely, so requiring it here costs nothing and closes that hole.
+            return Json.Fail($"--ids-file '{idsFile}' is relative and does not exist.",
+                $"Pass an absolute path; the working directory ('{Directory.GetCurrentDirectory()}') is not the repository. A file the skill has yet to create is named absolutely too.");
+        }
+
         if (!idsFileExists && prefix is null)
         {
             return Json.Fail($"IDs file not found: {idsFile}",
@@ -152,7 +162,7 @@ internal static class NextIdCommand
         Json.Print(new JsonObject
         {
             ["id"] = value,
-            // False means the number below is the first of a file step 5a still has to create.
+            // False means the number below is the first of a file step 6a still has to create.
             ["idsFileExists"] = idsFileExists,
             ["prefix"] = prefix,
             ["number"] = next,

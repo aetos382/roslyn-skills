@@ -553,7 +553,7 @@ internal static partial class FindConventionsCommand
                     // Whether the release-tracking analyzer (RS2000-RS2008) is reachable at all. Both values are
                     // weak: the package flows transitively from Microsoft.CodeAnalysis.*, and the SDK registers the
                     // AnalyzerReleases files as AdditionalFiles implicitly, so neither the package list nor the
-                    // project file proves anything. Only the RS2000 observation in SKILL.md 5e does.
+                    // project file proves anything. Only the RS2000 observation in SKILL.md 6e does.
                     ["analyzersPackage"] = p.PackageReferences.Contains("Microsoft.CodeAnalysis.Analyzers") ? "direct"
                         : p.PackageReferences.Any(r => r.StartsWith("Microsoft.CodeAnalysis.", StringComparison.Ordinal)) ? "viaCodeAnalysis"
                         : "none",
@@ -591,7 +591,7 @@ internal static partial class FindConventionsCommand
 
         // Each candidate carries how many Markdown files it holds, counting subdirectories: a directory left
         // behind empty by an interrupted run is otherwise indistinguishable from one full of pages, and the
-        // difference decides whether Step 2.5 has a leftover to report.
+        // difference decides whether Step 3 has a leftover to report.
         var candidateDirs = scan.Directories(root)
             .Where(d => !d.Equals(root, StringComparison.OrdinalIgnoreCase) && DocDirName.IsMatch(Path.GetFileName(d)))
             .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
@@ -709,7 +709,7 @@ internal static partial class FindConventionsCommand
         // Leftovers
         // ---------------------------------------------------------------------------
         // Traces of an interrupted earlier run: something that exists but holds nothing. None of them collides
-        // with an ID, so without this list Step 2.5 can only find them by listing directories by hand — and a
+        // with an ID, so without this list Step 3 can only find them by listing directories by hand — and a
         // leftover read as a convention makes the repository look like it documents nothing on purpose.
         var leftovers = new JsonArray();
         void Leftover(string kind, string? path, string detail)
