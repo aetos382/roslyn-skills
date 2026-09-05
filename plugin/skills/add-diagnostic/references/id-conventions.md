@@ -224,3 +224,18 @@ Prefer plain linked `<Compile>` items for a new repository, and keep the shared 
 3. If no code-fix project exists, do nothing beyond creating the IDs file; visibility follows the config (`idSharing`) or defaults to `public`.
 
 Source generators that report diagnostics live in the generator assembly and define their own descriptors there; they reference `DiagnosticIds` from the same assembly when the generator and analyzers share a project, or through one of the arrangements above when they do not.
+
+## What next-id answers with
+
+`next-id` decides a value and writes nothing; SKILL.md 5a is what edits a file.
+Three of its outputs are normal results rather than failures, and each says what 5a then has to do.
+
+| Output | What it means | What follows |
+|--------|---------------|--------------|
+| `{"error": ..., "hint": ...}` after `--category` in a repository with no prefix | there is nothing to read a prefix or a band from | Re-run with `--prefix <PREFIX> --band <n>`, using the prefix the user answered. Passing `--category` first in that repository is a wasted call. |
+| `"idsFileExists": false` | the IDs file named does not exist, and `--prefix` allowed the first ID to be allocated anyway | 5a creates the file rather than inserting a line into it. |
+| `"unresolvedCategory": true` | the category has no band header yet | Choose the next unused band digit, re-run with `--prefix <PREFIX> --band <n>`, and have 5a write the `// <Category> (<PREFIX><n>xxx)` header too. |
+
+Without `--prefix`, a path that does not exist is an error rather than an empty file, on purpose: a mistyped path read as empty would restart the numbering and hand out an ID the repository has already shipped.
+Once a band header exists, `--category <name>` alone is enough, since the command reads both the band and the prefix from it.
+Never renumber or reuse an existing value.

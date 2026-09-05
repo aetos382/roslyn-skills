@@ -127,6 +127,17 @@ Always mention this in the final summary when it applies; it is the one step the
 
 ## Creating a new resx file
 
+Which file SKILL.md Step 3 offers, when the project has no descriptor to follow and the question is asked:
+
+| The project has | The resx option is |
+|-----------------|--------------------|
+| a resx group holding diagnostic strings (`*Title` / `*Message` entries) | that group, named in the option |
+| a resx group holding other strings only | that file, named in the option — moving in with somebody else’s strings is the user’s call, never assumed |
+| no resx at all | a new `Resources.resx` beside the descriptor, named in the option — creating it, and registering it in the csproj, is the user’s call too |
+
+Name the file in the option text either way, so the answer is also the consent to create or share it.
+When several groups qualify, offer the likeliest and say the others exist.
+
 Only when Step 3's question was answered that way; never on the skill's own reading of the repository.
 Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, then **register it in the csproj**.
 The SDK's default glob already embeds it, so the item exists to carry metadata and is written as `Update`, never `Include`:

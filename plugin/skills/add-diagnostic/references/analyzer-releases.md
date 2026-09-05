@@ -84,3 +84,13 @@ Do not add suppression IDs to either file.
 | RS2006 | Release heading malformed in Shipped | `## Release x.y` |
 | RS2007 | Unshipped file contains a release heading | Move it to Shipped. |
 | RS2008 | No release-tracking files found | Create the pair. |
+
+## Proving that tracking runs
+
+SKILL.md 5e builds the analyzer project **before** adding the row, which looks backwards and is not.
+The descriptor written in 5c exists by then with no row to match it, so a release-tracking analyzer that is actually running reports **RS2000** for the new ID, or **RS2008** ("enable analyzer release tracking") when the release files do not exist yet.
+Either one proves tracking runs, at the cost of one build and with no file to restore.
+A clean build after the row is added proves nothing: it is equally consistent with the analyzer never having run.
+
+When neither appears, the package is missing: add `Microsoft.CodeAnalysis.Analyzers` with `PrivateAssets="all"` and build again.
+Do **not** add `<AdditionalFiles>` items for the release files — the SDK registers them implicitly, and their absence from the project file is not a defect.

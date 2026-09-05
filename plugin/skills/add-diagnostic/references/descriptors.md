@@ -7,7 +7,7 @@ Its field name equals the ID name.
 The IDs file stays a flat list of constants so it remains a one-page overview.
 
 ```csharp
-private static readonly DiagnosticDescriptor DisposableFieldShouldBeDisposed = new(
+private static readonly DiagnosticDescriptor DisposableFieldShouldBeDisposed = new DiagnosticDescriptor(
     id: DiagnosticIds.DisposableFieldShouldBeDisposed,
     title: new LocalizableResourceString(nameof(Resources.DisposableFieldShouldBeDisposedTitle), Resources.ResourceManager, typeof(Resources)),
     messageFormat: new LocalizableResourceString(nameof(Resources.DisposableFieldShouldBeDisposedMessage), Resources.ResourceManager, typeof(Resources)),
@@ -25,6 +25,14 @@ Omit `customTags` unless one is required (below).
 After adding the field, add it to the `SupportedDiagnostics` array of the same class.
 The analyzer will throw at runtime if it reports a descriptor that is not listed there.
 For source generators there is no `SupportedDiagnostics`; the descriptor only needs to exist where `context.ReportDiagnostic` uses it.
+A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no initializer**, which is what throws: the first descriptor initialises the property rather than being appended to a list that is not there.
+
+## Write the conservative form and let the build shorten it
+
+Write the explicit `new DiagnosticDescriptor(...)` rather than a target-typed `new(...)`, and `ImmutableArray.Create(...)` rather than a collection expression.
+Both shorter forms depend on the project — `LangVersion`, a `System.Collections.Immutable` new enough to carry `CollectionBuilderAttribute`, possibly a polyfill package — and detection cannot see all of that.
+The conservative form compiles either way, and where the repository wants the other one its own build says so, as IDE0090 or IDE0303, which SKILL.md 5e then fixes.
+This applies to new code only: an existing property or descriptor is matched, never rewritten.
 
 ## Follow the repository's existing pattern
 
@@ -105,6 +113,15 @@ The category also picks the ID band (see `id-conventions.md`).
 ### defaultSeverity
 
 Always ask.
+One answer is spelled three ways, so convert it consistently in the descriptor, in the AnalyzerReleases row, and wherever a default severity is written down:
+
+| User says | `defaultSeverity` | AnalyzerReleases `Severity` | `.editorconfig` |
+|-----------|-------------------|-----------------------------|-----------------|
+| error | `DiagnosticSeverity.Error` | `Error` | `error` |
+| warning | `DiagnosticSeverity.Warning` | `Warning` | `warning` |
+| suggestion, info | `DiagnosticSeverity.Info` | `Info` | `suggestion` |
+| hidden, silent | `DiagnosticSeverity.Hidden` | `Hidden` | `silent` |
+
 Offer this guidance when the user wants a recommendation:
 
 | Severity | Use for |
