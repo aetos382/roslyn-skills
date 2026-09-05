@@ -51,7 +51,7 @@ Which fixture it uses and what will be said to the agent are not there: choosing
 | `baseline/scan.json` | what the skill's scan command saw before the agent touched anything |
 | `baseline/build.log` | proof the fixture compiled clean to begin with |
 | `run.json` | the skill, the eval id, the project to build, and the warnings the baseline build produced |
-| `outputs/` | where the agent writes its report and the questions it answered for itself |
+| `outputs/` | where the agent writes its report, the questions it answered for itself, and anything it hit while following the skill |
 | `scratch/` | the scratch directory the prompt tells the agent to work from |
 
 `Temp/` is already ignored by git, and the solution names its projects one by one rather than by glob, so a generated repository never joins this build.
@@ -72,6 +72,12 @@ So the prompt tells the agent to write each question it would have asked to `out
 
 That file is worth reading even when every assertion passes.
 It is the only view of the question round the skill actually produced: how many questions survived whatever cap the skill sets, whether the options read clearly, and whether anything got asked mid-edit that the design step should have caught.
+
+The prompt also asks for `outputs/feedback.md`: anything the agent ran into while following the skill — an instruction it could not follow, two documents that disagreed, a step it had to read twice, an error it worked around — named against the document and step it belongs to.
+The agent that just followed the skill is the only witness to any of that, and no assertion can see it.
+It is written either way, saying so in as many words when nothing came up, because a missing file cannot tell "the skill gave me no trouble" apart from "the run never got this far".
+That leaves the other risk, which is an agent producing feedback because it was asked rather than because there was any, so the prompt says plainly that inventing something is what would make the file worthless.
+Read what turns up as a lead rather than as a finding — it is one run's impression, and the fix belongs in the skill only once you can see the same thing in the documents yourself.
 
 ## Writing an eval
 

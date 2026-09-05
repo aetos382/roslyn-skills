@@ -43,7 +43,9 @@ internal static class NewRunCommand
         command.SetAction(parse => Run(
             parse.GetValue(skill)!,
             parse.GetValue(id)!,
-            parse.GetValue(outRoot) ?? Harness.DefaultOutRoot,
+            // Made absolute here, because the prompt tells the agent every path in it is: a relative --out would
+            // otherwise reach the agent as a path relative to a directory it is not working in.
+            Path.GetFullPath(parse.GetValue(outRoot) ?? Harness.DefaultOutRoot),
             build: !parse.GetValue(noBuild)));
         return command;
     }

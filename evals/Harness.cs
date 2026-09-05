@@ -224,6 +224,22 @@ internal static partial class Harness
             ? $"Skill to follow: {Path.Combine(SkillDirectory(skill), "SKILL.md").Replace('\\', '/')}\nRead it first, and follow it.\n"
             : "No skill applies here. Work it out yourself.\n";
 
+        // Only the run that had a skill has anything to say about one. It is also the one that can be led into
+        // saying something anyway, which is what the last three sentences are for.
+        var feedback = withSkill
+            ? $"""
+
+            - The skill you followed is being worked on, and this run is the only record of what following it was
+              actually like. Write {Path.Combine(run, "outputs", "feedback.md").Replace('\\', '/')} either way,
+              and put in it anything you ran into along the way: an instruction you could not follow, two
+              documents that disagreed, a step you had to read twice to act on, an error you hit and worked
+              around. Name the document and the step each one belongs to. **When nothing came up, say so in as
+              many words** — the file has to be there to tell "the skill gave me no trouble" apart from "the run
+              never got this far". Report only what you actually met: writing something because you were asked
+              is the one thing that would make this file worth nothing.
+            """
+            : "";
+
         return $"""
             {heading}
             Target repository: {repo.Replace('\\', '/')}
@@ -246,7 +262,7 @@ internal static partial class Harness
             - Do not commit anything. The repository is a git repository so that URL resolution works, not so that
               the run ends in a commit.
             - When you are finished, write the report you would have shown the user to
-              {Path.Combine(run, "outputs", "report.md").Replace('\\', '/')}.
+              {Path.Combine(run, "outputs", "report.md").Replace('\\', '/')}.{feedback}
             """;
     }
 
