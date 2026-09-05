@@ -53,6 +53,8 @@ Pick the first matching row:
 | Helper exists and is `internal` / `public` | Call it: `title: Resources.GetLocalizableResourceString(nameof(Resources.{Name}Title))`. |
 | Neither | Mirror the neighbouring descriptor; with no neighbour use `new LocalizableResourceString(nameof(Resources.{Name}Title), Resources.ResourceManager, typeof(Resources))`. |
 
+This whole section applies to the resx route only; on the literal route the text goes into the constructor and no resource class is involved.
+
 Property shape for the nested class (one per resx entry, same name as the entry; `nameof` resolves to the generated `string` property of the outer class):
 
 ```csharp
@@ -78,8 +80,9 @@ Do not implement the analysis; that is a separate task.
 
 ### title, messageFormat, description
 
-All three are `LocalizableResourceString` instances pointing at resx entries named `{Name}Title`, `{Name}Message`, `{Name}Description`.
-Never pass plain string literals (RS1007).
+All three take a `LocalizableString`, and `string` converts to one implicitly, so both forms compile: plain literals in the constructor, or `LocalizableResourceString` instances pointing at resx entries named `{Name}Title`, `{Name}Message`, `{Name}Description`.
+Which one a new descriptor uses is not a judgement call — SKILL.md Step 3 "Where the strings live" settles it from what the project already does, and asks only when the project has no descriptor at all.
+The content rules below hold for either form.
 Content guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
 
 | Field | Guideline | Analyzer rule |
@@ -167,7 +170,7 @@ See `examples/SuppressorWithDescriptor.cs`.
 
 | Rule | Meaning | How the skill avoids it |
 |------|---------|-------------------------|
-| RS1007 | Provide localizable arguments to descriptor constructor | Always `LocalizableResourceString`. |
+| RS1007 | Provide localizable arguments to descriptor constructor | Fires on literal title / message / description. Off by default, and a project whose descriptors use literals has decided against it: follow the neighbours rather than this rule, and never turn it on. |
 | RS1015 | Provide non-null `helpLinkUri` | Off by default; expected when docs are skipped. |
 | RS1017 | `DiagnosticId` must be a non-null constant | Use the `const string` from the IDs file. |
 | RS1031 / RS1032 / RS1033 | Title / message / description format | Follow the table above. |

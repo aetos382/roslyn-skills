@@ -205,7 +205,8 @@ Prefer plain linked `<Compile>` items for a new repository, and keep the shared 
 
 ### What to do
 
-1. Detect: `find-conventions` reports `idSharing` and `diagnosticIdsProject`, the project that owns the IDs file.
+1. Detect: `find-conventions` reports `idSharing` on every code-fix project in `projects[]`, plus `diagnosticIdsProject`, the project that owns the IDs file.
+   The repository-wide `idSharing` is a roll-up of those and reads `mixed` when they differ; the per-project value is the one an edit follows, since a repository can wire one code fix and leave the next one unable to see the IDs.
    A repository whose analyzer and code fix both reference a neutral project is `SharedProject`, even though every wire in it is a `<ProjectReference>`:
 
    | Value | The IDs file belongs to | The code-fix project | IDs class visibility |
@@ -217,8 +218,8 @@ Prefer plain linked `<Compile>` items for a new repository, and keep the shared 
    | `none` | nowhere the code-fix project can see | needs one of the above | — |
 
    Follow the detected arrangement and keep the visibility consistent with it.
-2. If `none` and a code-fix project exists, ask which arrangement to use and recommend `AnalyzerProject`.
-   Then add the `<ProjectReference>` or the linked `<Compile>` item to the code-fix project.
+2. For each code-fix project whose value is `none`, ask which arrangement to use and recommend `AnalyzerProject`.
+   Then add the `<ProjectReference>` or the linked `<Compile>` item to that project, leaving the ones that already reach the IDs alone.
    When the IDs file already sits outside every project, `SharedFile` is the arrangement it is asking for: add the linked `<Compile>` item rather than moving the file.
 3. If no code-fix project exists, do nothing beyond creating the IDs file; visibility follows the config (`idSharing`) or defaults to `public`.
 

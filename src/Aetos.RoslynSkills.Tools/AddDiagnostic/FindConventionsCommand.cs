@@ -33,6 +33,11 @@ internal static partial class FindConventionsCommand
     [GeneratedRegex(@"^(docs?|documentation|wiki|rules|analyzers|diagnostics)$", RegexOptions.IgnoreCase)]
     private static partial Regex DocDirName { get; }
 
+    // A rule row in an AnalyzerReleases file: the ID in the first column. Headings, the table rule, and the
+    // template comments all fail to match, so a file carrying only those lists no rule.
+    [GeneratedRegex(@"^\s*[A-Za-z]{2,7}\d{3,5}\s*\|", RegexOptions.Multiline)]
+    private static partial Regex ReleaseRuleRow { get; }
+
     /// <summary>How many markdown files mentioning a known ID are reported before the scan gives up.</summary>
     private const int MentionFileLimit = 20;
 
@@ -584,10 +589,21 @@ internal static partial class FindConventionsCommand
                 .Select(g => g.Key).FirstOrDefault();
         }
 
+        // Each candidate carries how many Markdown files it holds, counting subdirectories: a directory left
+        // behind empty by an interrupted run is otherwise indistinguishable from one full of pages, and the
+        // difference decides whether Step 2.5 has a leftover to report.
         var candidateDirs = scan.Directories(root)
             .Where(d => !d.Equals(root, StringComparison.OrdinalIgnoreCase) && DocDirName.IsMatch(Path.GetFileName(d)))
             .OrderBy(d => d.Count(c => c is '/' or '\\')).ThenBy(d => d, StringComparer.Ordinal)
-            .Select(scan.Rel)
+            .Select(d => (
+                Path: scan.Rel(d),
+                // Release tracking is not documentation, and counting it would make the analyzer's own directory
+                // look like a documented one.
+                MarkdownFiles: scan.Files(d, "*.md")
+                    .Count(f => !Path.GetFileName(f).StartsWith("AnalyzerReleases.", StringComparison.OrdinalIgnoreCase)),
+                // Whether the directory holds any file at all, of any kind. A directory named Analyzers full of
+                // .cs files is somebody's source, not a documentation directory an interrupted run left behind.
+                Files: scan.Files(d, "*").Count()))
             .ToList();
 
         // Markdown that mentions an existing diagnostic ID (a single page listing every rule, a README table).
@@ -650,9 +666,9 @@ internal static partial class FindConventionsCommand
         var suggested = docsDir is not null
             ? scan.Rel(docsDir)
             : candidateDirs.Count > 0
-                ? (DocDirName.IsMatch(Path.GetFileName(candidateDirs[0])) && Path.GetFileName(candidateDirs[0]).Equals("rules", StringComparison.OrdinalIgnoreCase)
-                    ? candidateDirs[0]
-                    : candidateDirs[0] + "/rules")
+                ? (Path.GetFileName(candidateDirs[0].Path).Equals("rules", StringComparison.OrdinalIgnoreCase)
+                    ? candidateDirs[0].Path
+                    : candidateDirs[0].Path + "/rules")
                 : "docs/rules";
 
         var docs = new JsonObject
@@ -661,7 +677,12 @@ internal static partial class FindConventionsCommand
             ["indexFile"] = null,
             ["ruleDocs"] = new JsonArray(),
             ["suppressionDocs"] = new JsonArray(),
-            ["candidateDirectories"] = Json.Array(candidateDirs),
+            ["candidateDirectories"] = Json.Array(candidateDirs.Select(d => (JsonNode?)new JsonObject
+            {
+                ["path"] = d.Path,
+                ["markdownFiles"] = d.MarkdownFiles,
+                ["files"] = d.Files,
+            })),
             ["mentionFiles"] = Json.Array(mentionFiles),
             ["mentionFilesTruncated"] = mentionFilesTruncated,
             ["suggestedDirectory"] = suggested,
@@ -682,6 +703,38 @@ internal static partial class FindConventionsCommand
             var mds = scan.FilesIn(docsDir, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
             docs["ruleDocs"] = Json.Array(mds.Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
             docs["suppressionDocs"] = Json.Array(mds.Where(f => suppDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
+        }
+
+        // ---------------------------------------------------------------------------
+        // Leftovers
+        // ---------------------------------------------------------------------------
+        // Traces of an interrupted earlier run: something that exists but holds nothing. None of them collides
+        // with an ID, so without this list Step 2.5 can only find them by listing directories by hand — and a
+        // leftover read as a convention makes the repository look like it documents nothing on purpose.
+        var leftovers = new JsonArray();
+        void Leftover(string kind, string? path, string detail)
+        {
+            leftovers.Add(new JsonObject { ["kind"] = kind, ["path"] = path, ["detail"] = detail });
+        }
+
+        foreach (var d in candidateDirs.Where(d => d.Files == 0))
+        {
+            Leftover("emptyDocumentationDirectory", d.Path, "the directory exists and holds no file at all");
+        }
+
+        if (categoriesInfo is { } cats && cats["values"] is JsonObject { Count: 0 })
+        {
+            Leftover("categoriesClassWithoutConstants", cats["path"]!.ToString(), "the class exists and declares no category constant");
+        }
+
+        foreach (var release in releases.OfType<JsonObject>())
+        {
+            if (release["unshipped"]?.ToString() is { } unshippedPath &&
+                ReadOrNull(Path.Combine(root, unshippedPath)) is { } unshippedText &&
+                ListsNoRule(unshippedText))
+            {
+                Leftover("analyzerReleasesWithoutRules", unshippedPath, "the file exists and lists no rule under any heading");
+            }
         }
 
         // ---------------------------------------------------------------------------
@@ -711,8 +764,9 @@ internal static partial class FindConventionsCommand
         }
 
         var configuredSharing = config.Get("idSharing");
-        var sharing = configuredSharing ?? DetectIdSharing(
+        var sharingByProject = DetectIdSharing(
             projects, idsProject, diagIds is not null ? Path.GetFileName(diagIds["path"]!.ToString()) : null);
+        var sharing = configuredSharing ?? RollUpIdSharing(sharingByProject);
 
         // ---------------------------------------------------------------------------
         // Output
@@ -736,6 +790,18 @@ internal static partial class FindConventionsCommand
             }
         }
         var projectsJson = Json.Array(reported.Select(p => (JsonNode?)p.ToJson()));
+
+        // Each code-fix project carries its own route to the IDs: the repository-wide value below cannot say
+        // which of several code fixes is the one still missing a reference. A configured value overrides them
+        // all, since it is the user stating the arrangement rather than the scan guessing at it.
+        foreach (var (p, json) in reported.Zip(projectsJson.OfType<JsonObject>()))
+        {
+            if (sharingByProject.TryGetValue(p.Path, out var route))
+            {
+                json["idSharing"] = configuredSharing ?? route;
+            }
+        }
+
         if (summary)
         {
             foreach (var p in projectsJson.OfType<JsonObject>())
@@ -764,6 +830,8 @@ internal static partial class FindConventionsCommand
             ["diagnosticIds"] = diagIds,
             ["suppressionIds"] = suppIds,
             ["diagnosticCategories"] = categoriesInfo,
+            // The repository-wide roll-up: one route when every code-fix project takes the same one, "mixed" when
+            // they differ. Per-project values are on the projects themselves, and are what an edit acts on.
             ["idSharing"] = sharing,
             // False when idSharing was detected from project data that MSBuild could not fully evaluate: the
             // references and linked files detection reads come from evaluation, so "none" may only mean "unknown".
@@ -772,15 +840,31 @@ internal static partial class FindConventionsCommand
             ["resx"] = resxGroups,
             ["analyzerReleases"] = releases,
             ["docs"] = docs,
+            // Half-finished artifacts of an earlier run; stale or deliberate is the user's call, not the scan's.
+            ["leftovers"] = leftovers,
             ["git"] = gitJson,
         });
         return 0;
     }
 
     /// <summary>
-    /// How a code-fix project reaches the diagnostic IDs. The values name *where the IDs live* and how a consumer
-    /// reaches them, deliberately avoiding MSBuild item names since three of the four can be built out of
-    /// &lt;ProjectReference&gt; items:
+    /// Whether an AnalyzerReleases file declares no rule at all: what is left when a run that created the file
+    /// stopped before adding its row. The template comments, the section headings, and the table header and rule
+    /// are all present in such a file, so its length says nothing.
+    /// </summary>
+    internal static bool ListsNoRule(string releaseFileText)
+    {
+        return !ReleaseRuleRow.IsMatch(releaseFileText);
+    }
+
+    /// <summary>
+    /// How each code-fix project reaches the diagnostic IDs, keyed by the project's repository-relative path.
+    /// The answer is per project on purpose: a repository whose code fixes were added at different times often
+    /// has one that reaches the IDs and one that does not, and a single repository-wide value would report the
+    /// second as already arranged (see <see cref="RollUpIdSharing"/>).
+    ///
+    /// The values name *where the IDs live* and how a consumer reaches them, deliberately avoiding MSBuild item
+    /// names since three of the four can be built out of &lt;ProjectReference&gt; items:
     ///
     /// <code>
     ///                      | IDs in the analyzer project | IDs outside it
@@ -793,13 +877,43 @@ internal static partial class FindConventionsCommand
     ///                      |                             | produces no assembly of its own)
     /// </code>
     ///
-    /// "none" means no route was found, which for a repository whose projects all evaluated means there is none.
+    /// "none" means no route was found, which for a project that evaluated means there is none.
     /// </summary>
-    internal static string DetectIdSharing(IReadOnlyList<ProjectInfo> projects, ProjectInfo? idsProject, string? idsFileName)
+    internal static Dictionary<string, string> DetectIdSharing(
+        IReadOnlyList<ProjectInfo> projects,
+        ProjectInfo? idsProject,
+        string? idsFileName)
     {
-        var codeFixes = projects.Where(p => p.Kind == "codefix").ToList();
+        var byPath = projects
+            .GroupBy(p => p.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var producers = projects.Where(p => p.Kind is "analyzer" or "generator").ToList();
-        var analyzerPaths = producers.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Project references are transitive for compilation, so a code fix that references the analyzer sees the
+        // IDs project the analyzer references. Reachability, not the direct list, is what decides whether the
+        // constants are visible.
+        bool Reaches(ProjectInfo from, ProjectInfo target)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { from.Path };
+            var queue = new Queue<ProjectInfo>([from]);
+            while (queue.Count > 0)
+            {
+                foreach (var reference in queue.Dequeue().ProjectReferences)
+                {
+                    if (string.Equals(reference, target.Path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
+                    if (seen.Add(reference) && byPath.TryGetValue(reference, out var next))
+                    {
+                        queue.Enqueue(next);
+                    }
+                }
+            }
+
+            return false;
+        }
 
         bool LinksIdsFile(ProjectInfo p)
         {
@@ -807,36 +921,39 @@ internal static partial class FindConventionsCommand
                    p.LinkedCompileFiles.Any(l => l.EndsWith(idsFileName, StringComparison.OrdinalIgnoreCase));
         }
 
-        // The IDs file lives in a separate project that analyzers and code fixes both reference.
-        if (idsProject is not null && idsProject.Kind is not ("analyzer" or "generator") && codeFixes.Count > 0
-            && codeFixes.All(cf => cf.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase))
-            && producers.Any(p => p.ProjectReferences.Contains(idsProject.Path, StringComparer.OrdinalIgnoreCase)))
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cf in projects.Where(p => p.Kind == "codefix"))
         {
-            return "SharedProject";
+            result[cf.Path] =
+                // A linked file is checked first: a code fix that compiles the IDs file itself reaches the
+                // constants whether or not it also references the project they nominally belong to.
+                LinksIdsFile(cf) ? (idsProject is null ? "SharedFile" : "LinkedFile")
+                : idsProject is null ? "none"
+                : !Reaches(cf, idsProject) ? "none"
+                : idsProject.Kind is "analyzer" or "generator" ? "AnalyzerProject"
+                // A third project is only "shared" when a producer reaches it too; otherwise the IDs sit
+                // somewhere only the code fix can see, which is not an arrangement to copy.
+                : producers.Any(p => Reaches(p, idsProject)) ? "SharedProject"
+                : "none";
         }
 
-        // The IDs file sits under no project at all and each side links it.
-        if (idsProject is null && projects.Any(LinksIdsFile))
+        return result;
+    }
+
+    /// <summary>
+    /// The repository-wide answer: the one route when every code-fix project takes the same one, "mixed" when
+    /// they differ, and "none" when there is no code-fix project at all. "mixed" is reported rather than smoothed
+    /// over because it is exactly the case a single value used to hide — the skill has to look at each project.
+    /// </summary>
+    internal static string RollUpIdSharing(IReadOnlyDictionary<string, string> byProject)
+    {
+        var values = byProject.Values.Distinct(StringComparer.Ordinal).ToList();
+        return values.Count switch
         {
-            return "SharedFile";
-        }
-
-        foreach (var cf in codeFixes)
-        {
-            // The code fix references the analyzer project that owns the IDs file.
-            if (cf.ProjectReferences.Any(analyzerPaths.Contains))
-            {
-                return "AnalyzerProject";
-            }
-
-            // The code fix compiles the analyzer project's IDs file through a linked Compile item.
-            if (LinksIdsFile(cf))
-            {
-                return "LinkedFile";
-            }
-        }
-
-        return "none";
+            0 => "none",
+            1 => values[0],
+            _ => "mixed",
+        };
     }
 
     /// <summary>

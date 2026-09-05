@@ -1,10 +1,13 @@
+using System.Collections.Generic;
+
 using Aetos.RoslynSkills.Tools.AddDiagnostic;
 
 namespace Aetos.RoslynSkills.Tools.Tests;
 
 /// <summary>
-/// How the code-fix project reaches the diagnostic IDs. The answer decides where a new ID constant is declared, and
-/// a wrong one puts it somewhere the code fix cannot see, so every route the detection knows is checked here.
+/// How each code-fix project reaches the diagnostic IDs. The answer decides where a new ID constant is declared, and
+/// a wrong one puts it somewhere the code fix cannot see, so every route the detection knows is checked here, along
+/// with the repository-wide roll-up the skill reads before looking at the projects themselves.
 /// </summary>
 [TestClass]
 public sealed class IdSharingTests
@@ -21,7 +24,7 @@ public sealed class IdSharingTests
         var analyzer = Project("Analyzers", "analyzer");
         var codeFix = Project("CodeFixes", "codefix", projectReferences: [analyzer.Path]);
 
-        Assert.AreEqual("AnalyzerProject", FindConventionsCommand.DetectIdSharing([analyzer, codeFix], analyzer, IdsFileName));
+        Assert.AreEqual("AnalyzerProject", Route([analyzer, codeFix], analyzer, codeFix));
     }
 
     /// <summary>
@@ -35,7 +38,7 @@ public sealed class IdSharingTests
         var analyzer = Project("Analyzers", "analyzer");
         var codeFix = Project("CodeFixes", "codefix", linkedCompileFiles: ["src/Analyzers/DiagnosticIds.cs"]);
 
-        Assert.AreEqual("LinkedFile", FindConventionsCommand.DetectIdSharing([analyzer, codeFix], analyzer, IdsFileName));
+        Assert.AreEqual("LinkedFile", Route([analyzer, codeFix], analyzer, codeFix));
     }
 
     /// <summary>
@@ -49,7 +52,7 @@ public sealed class IdSharingTests
         var analyzer = Project("Analyzers", "analyzer", projectReferences: [common.Path]);
         var codeFix = Project("CodeFixes", "codefix", projectReferences: [common.Path]);
 
-        Assert.AreEqual("SharedProject", FindConventionsCommand.DetectIdSharing([common, analyzer, codeFix], common, IdsFileName));
+        Assert.AreEqual("SharedProject", Route([common, analyzer, codeFix], common, codeFix));
     }
 
     /// <summary>
@@ -62,7 +65,7 @@ public sealed class IdSharingTests
         var analyzer = Project("Analyzers", "analyzer", linkedCompileFiles: ["shared/DiagnosticIds.cs"]);
         var codeFix = Project("CodeFixes", "codefix", linkedCompileFiles: ["shared/DiagnosticIds.cs"]);
 
-        Assert.AreEqual("SharedFile", FindConventionsCommand.DetectIdSharing([analyzer, codeFix], null, IdsFileName));
+        Assert.AreEqual("SharedFile", Route([analyzer, codeFix], null, codeFix));
     }
 
     /// <summary>
@@ -75,26 +78,52 @@ public sealed class IdSharingTests
         var analyzer = Project("Analyzers", "analyzer");
         var codeFix = Project("CodeFixes", "codefix");
 
-        Assert.AreEqual("none", FindConventionsCommand.DetectIdSharing([analyzer, codeFix], analyzer, IdsFileName));
-        Assert.AreEqual("none", FindConventionsCommand.DetectIdSharing([analyzer], analyzer, IdsFileName),
+        Assert.AreEqual("none", Route([analyzer, codeFix], analyzer, codeFix));
+        Assert.AreEqual("none", FindConventionsCommand.RollUpIdSharing(Sharing([analyzer], analyzer)),
             "a repository with no code-fix project shares nothing");
     }
 
     /// <summary>
-    /// Guarantees a third project only one of two code fixes references is not reported as shared: the other code fix
-    /// would then be told the IDs are somewhere it cannot reach them.
+    /// Guarantees a code fix that reaches the IDs project only through another project it references is reported as
+    /// reaching them: project references are transitive for compilation, so the constants really are visible.
     /// </summary>
     [TestMethod]
-    public void AThirdProjectOnlyOneCodeFixReferencesIsNotShared()
+    public void AnIndirectProjectReferenceReachesTheIds()
     {
         var common = Project("Common", "other");
         var analyzer = Project("Analyzers", "analyzer", projectReferences: [common.Path]);
-        var sharing = Project("CodeFixes", "codefix", projectReferences: [common.Path]);
-        var notSharing = Project("MoreCodeFixes", "codefix", projectReferences: [analyzer.Path]);
+        var codeFix = Project("CodeFixes", "codefix", projectReferences: [analyzer.Path]);
 
-        Assert.AreEqual(
-            "AnalyzerProject",
-            FindConventionsCommand.DetectIdSharing([common, analyzer, sharing, notSharing], common, IdsFileName));
+        Assert.AreEqual("SharedProject", Route([common, analyzer, codeFix], common, codeFix));
+    }
+
+    /// <summary>
+    /// Guarantees each code-fix project is answered for on its own, and that a repository whose code fixes differ is
+    /// reported as mixed rather than as the route the first one happens to take: a single value would hide the code
+    /// fix that still cannot see the IDs, which is the one an edit has to reach.
+    /// </summary>
+    [TestMethod]
+    public void CodeFixProjectsAreAnsweredForSeparately()
+    {
+        var analyzer = Project("Analyzers", "analyzer");
+        var wired = Project("CodeFixes", "codefix", projectReferences: [analyzer.Path]);
+        var unwired = Project("MoreCodeFixes", "codefix");
+
+        var sharing = Sharing([analyzer, wired, unwired], analyzer);
+
+        Assert.AreEqual("AnalyzerProject", sharing[wired.Path]);
+        Assert.AreEqual("none", sharing[unwired.Path]);
+        Assert.AreEqual("mixed", FindConventionsCommand.RollUpIdSharing(sharing));
+    }
+
+    private static Dictionary<string, string> Sharing(ProjectInfo[] projects, ProjectInfo? idsProject)
+    {
+        return FindConventionsCommand.DetectIdSharing(projects, idsProject, IdsFileName);
+    }
+
+    private static string Route(ProjectInfo[] projects, ProjectInfo? idsProject, ProjectInfo codeFix)
+    {
+        return Sharing(projects, idsProject)[codeFix.Path];
     }
 
     private static ProjectInfo Project(

@@ -119,11 +119,72 @@ Who generates that class decides what happens next:
 |-------------------------|-------------------------------|--------|
 | `ResXFileCodeGenerator` / `PublicResXFileCodeGenerator` (`<Generator>` on the `EmbeddedResource`, `Resources.Designer.cs` checked in) | `Designer.cs` is regenerated only by Visual Studio when the resx is saved in its editor. Until then the build fails with CS0117. | Tell the user: open the resx in Visual Studio and save it (or run the custom tool) to regenerate `Resources.Designer.cs`, then commit both files. Do not hand-edit the Designer file. |
 | `Microsoft.CodeAnalysis.ResxSourceGenerator` package reference (a `PackageReference`, or a `GlobalPackageReference` in `Directory.Packages.props`; an empty `<Generator></Generator>` on the `EmbeddedResource` is typical alongside it) | The class is generated at build time from the resx. | Nothing; the next build picks up the entry. A hand-written partial (`resx[].localizableStringHelper`, `resx[].localizableStringProperties`) decides how descriptors obtain the strings; see `descriptors.md`, "Localizable strings". |
-| MSBuild `GenerateResource` with `StronglyTypedFileName` / `StronglyTypedClassName` metadata, or `Generator="MSBuild:Compile"` | Generated at build time. | Nothing. |
+| MSBuild `GenerateResource` with `StronglyTypedFileName` / `StronglyTypedClassName` metadata, or `Generator="MSBuild:Compile"` | Generated at build time into `obj/`. | Nothing. See "Creating a new resx file" for the metadata and its two naming traps. |
 | Unknown (no Designer file, no generator metadata) | Possibly the project reads resources through a custom `ResourceManager` wrapper. | Look at how existing descriptors reference resources and mirror it; if `nameof(Resources.X)` is used and no generator is found, ask the user how the class is produced. |
 
 `find-conventions` sets `requiresVisualStudioRegeneration` to `true` for the first row.
 Always mention this in the final summary when it applies; it is the one step the skill cannot do itself.
+
+## Creating a new resx file
+
+Only when Step 3's question was answered that way; never on the skill's own reading of the repository.
+Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, then **register it in the csproj**.
+The SDK's default glob already embeds it, so the item exists to carry metadata and is written as `Update`, never `Include`:
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Update="Resources.resx">
+    ...metadata...
+  </EmbeddedResource>
+</ItemGroup>
+```
+
+Which metadata depends on what the **repository** already does — look at every group in `resx[]`, not only the target project's, since the answer is a house style rather than a per-project one:
+
+| The repository already uses | Metadata | What it costs |
+|-----------------------------|----------|---------------|
+| `ResXFileCodeGenerator` / `PublicResXFileCodeGenerator` (`resx[].generator`) | `<Generator>ResXFileCodeGenerator</Generator>` and `<LastGenOutput>Resources.Designer.cs</LastGenOutput>` | The class does not exist until Visual Studio writes it, so the project fails with CS0117 until then: treat it exactly like `requiresVisualStudioRegeneration`, skip the build, and say so in the report. |
+| `Microsoft.CodeAnalysis.ResxSourceGenerator` (`projects[].usesResxSourceGenerator`, and an empty `resx[].generator`) | `<Generator></Generator>`, left empty so no custom tool is attached later | Nothing, provided that project already references the package. When it does not, adding it is a package reference the user has to agree to: ask rather than adding one. |
+| neither | the `StronglyTyped*` metadata below | Nothing beyond the caveats below; MSBuild's own `GenerateResource` writes the class into `obj/` at build time, so no IDE and no package is involved. |
+
+Culture files take no `StronglyTyped*` metadata and no generator: one class is generated from the neutral file and serves them all.
+
+### The MSBuild fallback
+
+```xml
+<EmbeddedResource Update="Resources.resx">
+  <Generator></Generator>
+  <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+  <StronglyTypedNamespace>Sample.Analyzers</StronglyTypedNamespace>
+  <StronglyTypedClassName>Resources</StronglyTypedClassName>
+  <StronglyTypedFileName>$(IntermediateOutputPath)Resources.Designer.cs</StronglyTypedFileName>
+</EmbeddedResource>
+```
+
+Three things about it decide how the descriptor is written and whether the resources are found at all.
+
+**The generated class is `internal class`, neither `partial` nor `static`.**
+So the hand-written partial patterns are unavailable on a file created this way: the descriptor reaches the strings as `new LocalizableResourceString(nameof(Resources.{Name}Title), Resources.ResourceManager, typeof(Resources))`, which works because `ResourceManager` is `internal` and the descriptor lives in the same assembly (`descriptors.md`, "Localizable strings", last row).
+`<PublicClass>true</PublicClass>` beside the other metadata makes the class and its members public, the `PublicResXFileCodeGenerator` equivalent.
+Leave it out: the descriptor lives in the same assembly, and a public resource class is API the repository has to keep.
+
+**The name the generated code looks up is `StronglyTypedNamespace` + class name, while the embedded name is `RootNamespace` + folder + file name.**
+They agree only when the resx sits directly in the project directory.
+For `Sub/Resources.resx` the build still succeeds and the first lookup throws `MissingManifestResourceException` at run time, which for an analyzer means it throws inside the host.
+Either put the file in the project directory, or add `<LogicalName>Sample.Analyzers.Resources.resources</LogicalName>` to force the embedded name to match.
+
+**A culture file's name is never checked at all.**
+`Sub/Resources.ja.resx` embeds as `...Sub.Resources.ja.resources`, the `ja` lookup finds nothing, and `ResourceManager` silently falls back to the neutral string — a wrong language with no error anywhere.
+When `LogicalName` is used for the neutral file, every culture file needs its own (`Sample.Analyzers.Resources.ja.resources`).
+
+`<Generator></Generator>` is written empty on purpose: it stops Visual Studio from attaching `ResXFileCodeGenerator` the first time somebody opens the file, which would add a second, checked-in copy of the same class.
+
+Generation happens during the build, and the generated file lives in `obj/`, so nothing is checked in and **the class does not exist until the project is built once**.
+Before that first build the editor reports the descriptor's `Resources` as undefined, and so does a fresh clone that has not been built.
+That resolves itself rather than needing a separate step: `GenerateResource` runs as part of `PrepareResources`, ahead of `CoreCompile`, so one build both writes the class and compiles against it — measured from a cleaned `obj/` and `bin/`, with the descriptor already referencing the class.
+The workflow builds in 5e (or, for suppressions, in Step 6), which is that build.
+Say so in the Step 7 report anyway, because the next person to open the repository sees the red editor before they see a build.
+`Microsoft.CodeAnalysis.ResxSourceGenerator` behaves the same way; only `ResXFileCodeGenerator`, whose `Designer.cs` is checked in, does not.
 
 ## Editing rules for the XML
 

@@ -57,6 +57,13 @@ internal static class Shell
                 CreateNoWindow = true,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
             };
+
+            // Child output is quoted verbatim into the JSON reports, so it has to read the same on every machine:
+            // a localized MSBuild error reaches the agent as text it cannot match against anything documented.
+            // DOTNET_CLI_UI_LANGUAGE covers the CLI, VSLANG the MSBuild engine and the compilers it starts.
+            psi.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
+            psi.Environment["VSLANG"] = "1033";
+
             foreach (var a in args)
             {
                 psi.ArgumentList.Add(a);
