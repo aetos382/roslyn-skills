@@ -99,28 +99,17 @@ internal static partial class Harness
     }
 
     /// <summary>
-    /// Finds the eval a command line names, as a bare id or as <c>skill:id</c>. A bare id that two skills both use
-    /// is refused rather than guessed at: picking one silently would run one skill's eval and grade it against the
-    /// other's assertions.
+    /// The one eval a skill and an id name. Both are given explicitly, so there is nothing to disambiguate; what
+    /// is left is saying which ids exist when the one asked for does not, since that is the moment someone needs
+    /// to know and being sent off to another command to find out is a step for nothing.
     /// </summary>
-    public static (string Skill, JsonObject Eval) Resolve(string reference)
+    public static JsonObject Resolve(string skill, string id)
     {
-        var parts = reference.Split(':', 2);
-        var matches = Evals()
-            .Where(e => parts.Length == 2
-                ? e.Skill == parts[0] && e.Eval["id"]!.ToString() == parts[1]
-                : e.Eval["id"]!.ToString() == reference)
-            .ToList();
-
-        return matches.Count switch
-        {
-            1 => matches[0],
-            0 => throw new KeyNotFoundException($"unknown eval '{reference}'; run 'list' to see them."),
-            _ => throw new ArgumentException(
-                $"'{reference}' names an eval in more than one skill ({string.Join(", ", matches.Select(m => m.Skill))}); "
-                + "say which as <skill>:<eval-id>.",
-                nameof(reference)),
-        };
+        var evals = Evals(skill).ToList();
+        return evals.FirstOrDefault(e => e["id"]!.ToString() == id)
+            ?? throw new KeyNotFoundException(
+                $"{skill} has no eval named '{id}'. Its evals are: "
+                + string.Join(", ", evals.Select(e => e["id"])));
     }
 
     public static void Materialize(Fixture fixture, string directory)

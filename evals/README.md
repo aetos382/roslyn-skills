@@ -30,14 +30,15 @@ The skill's name is its directory under `plugin/skills/`, which is where the pro
 
 ```bash
 dotnet run --project evals -- list                     # every skill's evals
-dotnet run --project evals -- check                    # the evals.json files are well formed
-dotnet run --project evals -- new-run mature-new-category
+dotnet run --project evals -- new-run --skill add-diagnostic --id mature-new-category
 # hand the printed prompt.md to an agent, wait for it to finish
 dotnet run --project evals -- grade <run directory>
 dotnet run --project evals -- report                   # every graded run so far
+dotnet run --project evals -- check                    # the evals.json files are well formed
 ```
 
-An eval is named by its id, or by `<skill>:<id>` when two skills happen to use the same one.
+`list` prints one labelled field per line rather than columns, so a prompt gets the width of the terminal and an indent of its own instead of being truncated into a column.
+`--skill` and `--id` are the two fields of that listing; `new-run` names the skill's other ids when given one it does not recognize.
 
 `new-run` creates a directory under `Temp/evals/<skill>/` in this workspace and fills it with:
 

@@ -9,6 +9,10 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
+
+    <!-- Only for `list`: it measures East Asian characters as two columns, so a Japanese prompt wraps under its
+         own indent instead of breaking the layout. Doing that by hand is the part worth not owning. -->
+    <PackageReference Include="Spectre.Console" />
   </ItemGroup>
 
   <ItemGroup>

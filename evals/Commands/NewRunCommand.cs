@@ -16,9 +16,15 @@ internal static class NewRunCommand
 {
     public static Command Create()
     {
-        var eval = new Argument<string>("eval")
+        var skill = new Option<string>("--skill")
         {
-            Description = "The eval to run, as its id or as <skill>:<id> when two skills use the same one.",
+            Description = "The skill whose evals to run, named as its directory under plugin/skills.",
+            Required = true,
+        };
+        var id = new Option<string>("--id")
+        {
+            Description = "The eval's id within that skill.",
+            Required = true,
         };
         var outRoot = new Option<string?>("--out")
         {
@@ -30,21 +36,22 @@ internal static class NewRunCommand
         };
 
         var command = new Command("new-run", "Creates a run directory for one eval and prints the prompt to hand an agent.");
-        command.Arguments.Add(eval);
+        command.Options.Add(skill);
+        command.Options.Add(id);
         command.Options.Add(outRoot);
         command.Options.Add(noBuild);
         command.SetAction(parse => Run(
-            parse.GetValue(eval)!,
+            parse.GetValue(skill)!,
+            parse.GetValue(id)!,
             parse.GetValue(outRoot) ?? Harness.DefaultOutRoot,
             build: !parse.GetValue(noBuild)));
         return command;
     }
 
-    private static int Run(string reference, string outRoot, bool build)
+    private static int Run(string skillName, string id, string outRoot, bool build)
     {
-        var (skillName, eval) = Harness.Resolve(reference);
         var skill = Skills.Get(skillName);
-        var id = eval["id"]!.ToString();
+        var eval = Harness.Resolve(skillName, id);
 
         var fixtureName = eval["fixture"]!.ToString();
         var fixture = skill.Fixtures.TryGetValue(fixtureName, out var make)
