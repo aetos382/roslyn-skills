@@ -31,6 +31,7 @@ From Bash:
 
 ```bash
 cd "$SCRATCH"                                       # working directory: outside the repository
+export DOTNET_CLI_UI_LANGUAGE=en VSLANG=1033        # English output from every dotnet command, see below
 T="dotnet tool exec Aetos.RoslynSkills.Tools@0.1.4 -- add-diagnostic"   # not dnx, see below
 R="/absolute/path/to/the/repository"
 
@@ -57,17 +58,34 @@ Pass `-nodeReuse:false` to every `dotnet build` or `dotnet msbuild` the workflow
 `find-conventions` already does this internally.
 The switch is spelled `-nodeReuse:false` or `-nr:false`; `/node-reuse:false` is rejected with MSB1001.
 
+Export `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033` once, before the first command, so every `dotnet` invocation of the workflow answers in English.
+The SDK and MSBuild otherwise speak the machine's language, and this file documents its failures — MSB1001, CS0117, IDE0090, the NuGet text below — in English only, so a localized build log is one the workflow cannot match against anything written here.
+The first covers the CLI, the second the MSBuild engine and the compilers it starts; the tool sets both for the processes it starts itself, which does not reach the commands run here.
+
 Every subcommand prints JSON on stdout, including for expected failures (`{"error": ..., "hint": ...}` with exit code 1) and for a mistyped command line, so read the output rather than guessing what it would return.
 Exit code 2 is a bug in the tool rather than a bad argument: the same two fields plus `"unexpected": true`, `exception` and `stackTrace`.
 Report it and stop; re-running the same command will not help.
 
 A failure that names the package rather than the subcommand — `Aetos.RoslynSkills.Tools` could not be resolved, or no version matches the pin — comes from NuGet before the tool ever starts, so it arrives as plain SDK text rather than the JSON above.
-When the pinned version was published minutes earlier that is the download endpoint still catching up, and retrying after a few minutes succeeds; it is the one failure here worth repeating verbatim.
+When the pinned version was published minutes earlier it is usually the download endpoint still catching up, which clears on its own within a few minutes; that is a thing to tell the user, not a reason to run the command again.
 Being absent from the nuget.org website or from `dotnet package search` is a separate index that lags far longer and never affects `dotnet tool exec`.
 
-When the retry fails too, stop and say so.
+Which failure it is, is told by the `NU####` code rather than by the message around it: the codes are the same in every language, the prose is not.
+
+| Code | What happened | What to do |
+|------|---------------|------------|
+| `NU1101`, `NU1102`, `NU1103` | nuget.org answered; the package, that version, or a stable version of it is not there | Do not re-run the command. Report it, and tell the user to wait a few minutes and run the skill again, since a version published minutes ago arrives on the download endpoint with a delay. |
+| `NU1301`, `NU1302` | the feed itself could not be loaded — DNS, proxy, TLS, a 5xx from the source | Wait a few seconds and run the same command once more. When it fails again, report it and stop. |
+| anything else, including HTTP 401 / 403 | not a case this file knows | Report it with the output and ask the user how to proceed. |
+
+That single retry on `NU1301` / `NU1302` is the only waiting this workflow does.
+Everywhere else, re-running is the user's decision: an agent that sleeps and retries on its own turns a clear failure into a session that looks busy while nothing is happening.
+
 **Never lower the pin, float it, or reach for whatever version does resolve**: the pinned number is what makes this file and the tool one release, and an older tool either rejects an argument written here or, worse, accepts it and behaves differently, which reaches the user as a wrong edit rather than as an error.
-A version that will not resolve means the release it belongs to has not reached NuGet.org yet — someone has to publish it — and that is a fact to report, not an obstacle to work around.
+A version that will not resolve means the release it belongs to is not on NuGet.org, which is a defect in this skill's own release and has nothing to do with the repository being worked on.
+Say that and name the version.
+Do **not** ask the user to publish the package: whoever installed this skill is not necessarily the person who releases it, and for anyone but its maintainer that is a request they cannot act on.
+Reporting it to the skill's repository is worth suggesting once the wait has not cleared it — say, after ten minutes — and it is theirs to decide on.
 
 **Run it from the scratchpad**, not from anywhere inside the target repository, and pass absolute paths for `--path`, `--ids-file`, `--resx`, and `--entries`.
 `dotnet` resolves its SDK from the first `global.json` found in the working directory **or any ancestor of it**, so a pin at the repository root applies just as much when the working directory is several folders below it, and a pinned version that is not installed fails outright with "A compatible .NET SDK was not found".
