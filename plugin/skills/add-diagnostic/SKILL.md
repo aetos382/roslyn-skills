@@ -214,12 +214,13 @@ Perform the edits in this order (6a–6h) so later edits can rely on earlier one
      Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: the file comes from `references/resources.md`, "Creating a new resx file", either as the option the user answered or as one of the two rows that table settles without asking.
   2. New file, only when Step 4 settled on one: write it from the neutral file of an existing group and **register it in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file") — `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
      The first makes the class Visual Studio's to generate, so treat it as `requiresVisualStudioRegeneration` from here on; the second needs that project to already reference the package, which is a package reference to ask about rather than add.
-  3. Back up: **copy every culture file of that group to the scratchpad first**.
-     They may already carry uncommitted work, so `git checkout --` is not a recovery path and must not be used.
+  3. Back up, but only when the group already existed: **copy every culture file of that group to the scratchpad first**.
+     They may already carry uncommitted work that git has no record of, so `git checkout --` would throw that away along with this run's write and is not a recovery path.
+     A group 6d.2 has just created has nothing to preserve — the copy would be of what this run wrote seconds ago, and restoring it would leave an empty resx behind — so skip the copy there and let 6d.6 undo the creation instead.
   4. Write: run `add-resx-entries` **once per culture file**, each with its own entries JSON in the scratchpad and `--ids-file` pointing at the IDs file edited in 6a.
   5. Language: the neutral file follows `resx[].neutralLanguage` rather than an assumption of English, and source text is never copied into a satellite file, where it looks translated and never gets fixed.
      Which language each file is written in, and the placeholder comments the neutral file carries, are in `references/resources.md`.
-  6. Check: read each report, and when `valid` is false restore from the scratchpad copies and stop.
+  6. Check: read each report, and when `valid` is false stop, after undoing the write: restore the scratchpad copies for a group that already existed, and for one 6d.2 created delete that file and take its `EmbeddedResource` item back out of the csproj.
 
   Never edit `*.Designer.cs` (`references/resources.md`).
 - **6e.

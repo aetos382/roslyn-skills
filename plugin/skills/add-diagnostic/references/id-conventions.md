@@ -66,6 +66,10 @@ With four digits:
 | 4 | 4001–4999 | Naming |
 | 9 | 9001–9999 | Generator / infrastructure diagnostics |
 
+The categories in that column are illustrative, not a mapping to follow.
+A repository with no bands yet gives band 1 to its first category, whatever that category is called — a first Usage rule is `ABC1001`, not `ABC2001`.
+The files under `examples/` show Usage at band 2 because the repository they depict already had a band 1, and they are worked examples of a mature repository rather than of the one in front of you.
+
 Rules:
 
 1. The band-to-category mapping lives in comment headers in the IDs file (format below) and optionally in `.claude/roslyn-skills/add-diagnostic.md` under `"categories"`.
