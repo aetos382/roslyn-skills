@@ -19,6 +19,10 @@ internal static class ListCommand
             Description = "Only this skill's evals. Every skill's when omitted.",
         };
 
+        // The set is known at parse time, so a typo is a parse error naming the skills that do exist, and the
+        // shells that support completion can offer them.
+        skill.AcceptOnlyFromAmong([.. Skills.All.Keys]);
+
         var command = new Command("list", "Lists the evals and what each one is meant to guarantee.");
         command.Options.Add(skill);
         command.SetAction(parse => Run(parse.GetValue(skill)));
@@ -27,7 +31,6 @@ internal static class ListCommand
 
     private static int Run(string? only)
     {
-        // An unknown name is left to Skills.Get, which answers with the ones that do exist.
         var evals = only is null
             ? Harness.Evals()
             : Harness.Evals(only).Select(e => (Skill: only, Eval: e));

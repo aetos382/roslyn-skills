@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.CommandLine.Completions;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -21,15 +23,25 @@ internal static class NewRunCommand
             Description = "The skill whose evals to run, named as its directory under plugin/skills.",
             Required = true,
         };
+
+        skill.AcceptOnlyFromAmong([.. Skills.All.Keys]);
+
         var id = new Option<string>("--id")
         {
             Description = "The eval's id within that skill.",
             Required = true,
         };
+
+        // Which ids exist is known only once the skill's evals.json has been read, so this cannot be the static
+        // AcceptOnlyFromAmong that --skill gets. A completion source runs against the line as it has been typed
+        // so far, which is enough: it answers from whatever --skill is already on it.
+        id.CompletionSources.Add(context => EvalIds(context.ParseResult.GetValue(skill)));
+
         var outRoot = new Option<string?>("--out")
         {
             Description = "Where to create the run directory. Defaults to Temp/evals in this repository.",
         };
+
         var noBuild = new Option<bool>("--no-build")
         {
             Description = "Skip the baseline build. The run then has nothing to compare against, so the 'build' assertion fails.",
@@ -47,7 +59,29 @@ internal static class NewRunCommand
             // otherwise reach the agent as a path relative to a directory it is not working in.
             Path.GetFullPath(parse.GetValue(outRoot) ?? Harness.DefaultOutRoot),
             build: !parse.GetValue(noBuild)));
+
         return command;
+    }
+
+    // List rather than IEnumerable so the reads below happen inside the try: a deferred sequence would throw
+    // at the caller instead.
+    private static List<CompletionItem> EvalIds(string? skillName)
+    {
+        // Half-typed input is the normal case here: --skill may be absent, misspelled, or name a skill whose
+        // evals.json is being edited right now. Completion has nowhere to report any of that, so it stays quiet.
+        if (skillName is null || !Skills.All.ContainsKey(skillName))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Harness.Evals(skillName).Select(e => new CompletionItem(e["id"]!.ToString())).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException)
+        {
+            return [];
+        }
     }
 
     private static int Run(string skillName, string id, string outRoot, bool build)
@@ -104,6 +138,7 @@ internal static class NewRunCommand
             ["baselineBuilt"] = build,
             ["baselineWarnings"] = warnings,
         };
+
         File.WriteAllText(
             Path.Combine(run, "run.json"),
             meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -118,6 +153,7 @@ internal static class NewRunCommand
         Console.WriteLine($"baseline  {Path.Combine(run, "prompt-baseline.md")}");
         Console.WriteLine();
         Console.WriteLine($"When the agent is done:  dotnet run --project evals -- grade \"{run}\"");
+
         return 0;
     }
 }
