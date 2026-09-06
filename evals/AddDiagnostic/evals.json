@@ -147,6 +147,28 @@
         { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
         { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }
       ]
+    },
+    {
+      "id": "greenfield-resx-request",
+      "summary": "ディスクリプタも resx も無いところにリクエストが resx を指定したら、ルートもファイルも訊かずに resx を作ること。",
+      "fixture": "greenfield",
+      "prompt": "This is our first analyzer rule. Warn when a public method accepts a CancellationToken parameter and never forwards it to the calls it makes. Category Usage, severity Warning. Use FAB as our diagnostic ID prefix. Put the strings in a resx so we can localize them later.",
+      "expected_output": "リクエストが resx を指定しているので、ルートも置き場所のファイルも質問にならず、文字列については一度も止まらない。Resources.resx が新規作成されて csproj に登録され、Title / Message / Description の 3 エントリが入る。採番は Usage が最初の未使用バンド 1 を取って FAB1001。AnalyzerReleases の対とドキュメントは通常どおり作られる。",
+      "assertions": [
+        { "text": "FAB1001 が採番されている", "kind": "jsonContains", "path": "diagnosticIds.ids[].value", "value": "FAB1001" },
+        { "text": "採番されたのは 1 件だけ", "kind": "jsonCount", "path": "diagnosticIds.ids[]", "count": 1 },
+        { "text": "Usage バンドのヘッダーが書かれている", "kind": "contains", "glob": "src/Fabrikam.Analyzers/DiagnosticIds.cs", "pattern": "// Usage \\(FAB1xxx\\)" },
+        { "text": "resx が新規作成されている", "kind": "fileExists", "glob": "src/Fabrikam.Analyzers/*.resx" },
+        { "text": "resx に Title / Message / Description の 3 エントリが入っている", "kind": "resxEntryCount", "glob": "src/Fabrikam.Analyzers/*.resx", "count": 3 },
+        { "text": "resx が csproj に登録されている", "kind": "contains", "glob": "src/Fabrikam.Analyzers/Fabrikam.Analyzers.csproj", "pattern": "EmbeddedResource" },
+        { "text": "ディスクリプタが resx を参照している", "kind": "anyContains", "glob": "src/Fabrikam.Analyzers/*.cs", "pattern": "DiagnosticDescriptor\\s+{name:FAB1001}[\\s\\S]{0,800}LocalizableResourceString" },
+        { "text": "SupportedDiagnostics に登録されている", "kind": "anyContains", "glob": "src/Fabrikam.Analyzers/*.cs", "pattern": "SupportedDiagnostics[\\s\\S]{0,400}{name:FAB1001}\\b" },
+        { "text": "文字列の置き場所を質問していない (見出しで判定するため脆い。落ちたら questions.md を読むこと)", "kind": "notContains", "glob": "@outputs/questions.md", "pattern": "(?m)^#{2,}[^\\n]*(resx|literal|strings|リテラル|文字列)" },
+        { "text": "Unshipped に FAB1001 の行がある", "kind": "contains", "glob": "src/Fabrikam.Analyzers/AnalyzerReleases.Unshipped.md", "pattern": "FAB1001\\s*\\|\\s*Usage" },
+        { "text": "ドキュメント ページが作成されている", "kind": "fileExists", "glob": "**/FAB1001.md" },
+        { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
+        { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }
+      ]
     }
   ]
 }
