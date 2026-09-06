@@ -127,18 +127,20 @@ Always mention this in the final summary when it applies; it is the one step the
 
 ## Creating a new resx file
 
-Which file SKILL.md Step 4 offers, when the project has no descriptor to follow and the question is asked:
+Which file the resx route uses, once SKILL.md Step 4.6 has settled that the strings go to resx:
 
-| The project has | The resx option is |
-|-----------------|--------------------|
-| a resx group holding diagnostic strings (`*Title` / `*Message` entries) | that group, named in the option |
-| a resx group holding other strings only | that file, named in the option — moving in with somebody else’s strings is the user’s call, never assumed |
-| no resx at all | a new `Resources.resx` beside the descriptor, named in the option — creating it, and registering it in the csproj, is the user’s call too |
+| The target project has | The file |
+|------------------------|----------|
+| no resx at all | a new `Resources.resx` beside the descriptor, created without asking — choosing the resx route was itself the consent |
+| resx, but no group holding diagnostic strings (`*Title` / `*Message` entries) | ask: share that file, or create a new `Resources.resx`. Moving in with somebody else’s strings is the user’s call, never assumed |
+| several groups, exactly one of them holding diagnostic strings | that group, without asking |
+| several groups with diagnostic strings spread across them | ask, offering the likeliest and saying the others exist |
 
-Name the file in the option text either way, so the answer is also the consent to create or share it.
-When several groups qualify, offer the likeliest and say the others exist.
+The likeliest is the group holding the strings of existing diagnostics in the **same category** as the new one, and failing that the group holding the most diagnostic strings.
+Never pick silently when they are spread: `add-resx-entries` runs once per culture file, so a wrong silent pick has written entries into every culture file of the wrong group before anyone sees them.
+Name the file in the option text whenever a row above asks, so the answer is also the consent to create or share it.
 
-Only when Step 4's question was answered that way; never on the skill's own reading of the repository.
+Create a new file only where that table calls for one; never on the skill's own reading of the repository.
 Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, then **register it in the csproj**.
 The SDK's default glob already embeds it, so the item exists to carry metadata and is written as `Update`, never `Include`:
 

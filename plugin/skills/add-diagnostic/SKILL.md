@@ -84,7 +84,7 @@ Ask nothing in this step: collect what is undecided and put it in the single que
 - `excludedPluginDirectories` — Claude Code plugin trees inside the repository, skipped, this plugin included when it is installed there.
   Their sample files are documentation and must never be read as the repository's conventions; do not go looking in them by hand either.
 
-When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough); ask for the analyzer project only when none is detected; create categories / releases files alongside the existing ones, and a resx only when Step 4 asked for one.
+When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough) **and the request does not state one**; ask for the analyzer project only when none is detected; create categories / releases files alongside the existing ones, and a resx only when Step 4 asked for one.
 New IDs files follow the *structure* of `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/DiagnosticCategories.cs` with the user's namespace and prefix, one band header for the new category, and none of the sample constants (defaults in `references/id-conventions.md`).
 
 Read one existing descriptor in the target project (if any) before writing a new one; the new code must look like its neighbours (helper methods, argument style, resource class).
@@ -127,16 +127,32 @@ Draft before asking, so the user reviews concrete text rather than open question
 5. **Documentation**: propose *yes* with the target path, always.
    Use `docs.directory` when it exists, otherwise `docs.suggestedDirectory` (a missing folder is created, not a reason to skip).
    Check `docs.mentionFiles` first: when rules are documented in one shared page or a README table, propose extending that file instead of creating a new layout.
-6. **Where the strings live**: read one existing `DiagnosticDescriptor` in the target project and follow it, whatever it does — literal arguments mean literals, a `LocalizableResourceString` means an entry in the resx group the neighbours use.
-   Do not weigh RS1007 against the neighbour or check whether the project enables it: the existing descriptors are the decision, and a project mixing both forms is worse than either.
-   Only a project with **no descriptor at all** leaves this open, and then it becomes a question with the resx route recommended, naming the exact file that route would use — which `references/resources.md`, "Creating a new resx file", picks, since answering the question is also the consent to create or share that file.
+6. **Where the strings live**: read the existing `DiagnosticDescriptor`s of the **target project** — that project alone, since another project's habit is not this one's — and cross what they do with what the request asked for.
+   resx is the better form, so the two directions are not symmetric:
+
+   | The project's descriptors | The request asked for | What to do |
+   |---------------------------|-----------------------|------------|
+   | none | nothing | Ask, with the resx route recommended. |
+   | none | literals | Literals, no question. |
+   | none | resx | resx, no question. |
+   | literals | nothing | Literals. |
+   | resx | nothing | resx. |
+   | literals | resx | Ask: does this one descriptor go to resx? |
+   | resx | literals | Ask, recommending resx. |
+   | mixed | nothing, or resx | resx. |
+   | mixed | literals | Ask, recommending resx; literals if the user still says literals. |
+
+   A row that says *no question* still shows its answer in the proposal table below, where "Other" can correct it; it only means the question round does not spend a slot on it.
+   Do not weigh RS1007 against the neighbours or check whether the project enables it.
+   Consistency inside a project is worth more than either form on its own, so mixing is never the goal — but an explicit request outranks that, and answering *yes, this one* above leaves the project mixed on purpose. Say nothing about the existing descriptors when it does: converting them is a repository-wide change this skill does not make, and not something to raise here.
+   Whichever row asks, it asks **once**: the options name the resx file, so the route and the file are settled by the same answer, and that answer is also the consent to create or share the file (`references/resources.md`, "Creating a new resx file", picks the file and says which cases need asking at all).
 
 Then print the proposal as a short table in the message (name, ID band/category, title, message, description, target class, where the strings go, documentation yes/no) and, directly after it, ask **one** `AskUserQuestion` round.
 It is the only round the design goes through: everything Step 1 left open — the prefix when `diagnosticPrefix` is null, and the arrangement each code-fix project reporting `idSharing: none` needs — belongs in it alongside what this step leaves open, so the user answers once and Step 6 then runs without stopping.
 Candidates, in priority order when more than four exist:
 
-1. prefix (only when null; it names every future ID)
-2. where the strings live (only when the project has no descriptor to follow; it is also the consent to create or share a resx file)
+1. prefix (only when null and the request does not state one; it names every future ID)
+2. where the strings live (only when the table in 4.6 asks; it is also the consent to create or share a resx file)
 3. ID sharing (only when a code-fix project reports `none`; it is the consent to edit that project file, and `AnalyzerProject` is the recommendation)
 4. severity
 5. `suppressedDiagnosticId` (suppressions only)
@@ -195,8 +211,8 @@ Perform the edits in this order (6a–6h) so later edits can rely on earlier one
 - **6d.
   resx** (resx route only; the literal route has nothing to do here), in this order:
   1. Target: write to the resource group Step 4 settled on.
-     Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: that file was named in the Step 4 option the user answered.
-  2. New file, only when that answer asked for one: write it from the neutral file of an existing group and **register it in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file") — `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
+     Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: the file comes from `references/resources.md`, "Creating a new resx file", either as the option the user answered or as one of the two rows that table settles without asking.
+  2. New file, only when Step 4 settled on one: write it from the neutral file of an existing group and **register it in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file") — `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
      The first makes the class Visual Studio's to generate, so treat it as `requiresVisualStudioRegeneration` from here on; the second needs that project to already reference the package, which is a package reference to ask about rather than add.
   3. Back up: **copy every culture file of that group to the scratchpad first**.
      They may already carry uncommitted work, so `git checkout --` is not a recovery path and must not be used.
@@ -259,14 +275,14 @@ When that regeneration is one of them, say that the build 6e and Step 7 both ski
 - The IDs file contains only constants and band headers; descriptors live in the reporting class.
 - The descriptor field, the ID constant, and (on the resx route) the resx stem share one name.
 - Every culture file of the resource group gets the same entries; only `.resx` files are edited.
-- The existing descriptors decide literals or resx; creating or sharing a resx file is the user's answer, never an assumption.
+- Where the strings live is decided by the table in Step 4.6, not by the neighbours alone; creating or sharing a resx file is the user's answer, never a reading of the repository.
 - Never change the accessibility, signature, or name of an existing member to make new code compile; a `private` helper means the entry point belongs next to it, in the same class.
 - Back up to the scratchpad before any edit that may need undoing, and never recover with `git checkout --`, `git restore` or `git stash`: the file may hold work from before this run.
 - Check whether the diagnostic already exists before adding anything (Step 3).
 - Suppressions: separate IDs file, independent sequence, `Justification` only, no AnalyzerReleases row.
 - `helpLinkUri` points at a page that exists once 6f has run, or is omitted; between 6c and 6f it deliberately points at a page not yet written.
 - Documentation is always offered, never skipped silently; a missing documentation directory is created, not treated as a decision.
-- Ask for severity, category, and message arguments unless the request already states them.
+- Ask only for what neither the repository nor the request already settles. Take each item — prefix, category, severity, message arguments, ID sharing — and cross "the repository decides it" with "the request states it": neither, ask; the request only, obey it without spending a question slot; the repository only, follow the repository; both and they agree, say nothing; both and they disagree, ask. Where the strings live follows Step 4.6 instead, which is deliberately asymmetric.
 - Do not implement analysis logic, code fixes, or tests; offer them as follow-ups.
 
 ## Additional resources

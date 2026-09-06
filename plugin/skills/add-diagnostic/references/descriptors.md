@@ -25,12 +25,13 @@ Omit `customTags` unless one is required (below).
 After adding the field, add it to the `SupportedDiagnostics` array of the same class.
 The analyzer will throw at runtime if it reports a descriptor that is not listed there.
 For source generators there is no `SupportedDiagnostics`; the descriptor only needs to exist where `context.ReportDiagnostic` uses it.
-A scaffolded analyzer often declares `SupportedDiagnostics { get; }` with **no initializer**, which is what throws: the first descriptor initialises the property rather than being appended to a list that is not there.
+An analyzer may declare `SupportedDiagnostics { get; }` with **no initializer**, which is what throws: the first descriptor initialises the property rather than being appended to a list that is not there.
 
 ## Write the conservative form and let the build shorten it
 
 Write the explicit `new DiagnosticDescriptor(...)` rather than a target-typed `new(...)`, and `ImmutableArray.Create(...)` rather than a collection expression.
-Both shorter forms depend on the project — `LangVersion`, a `System.Collections.Immutable` new enough to carry `CollectionBuilderAttribute`, possibly a polyfill package — and detection cannot see all of that.
+Both shorter forms depend on the project — `LangVersion` 12+, and a `System.Collections.Immutable` 8.0 or later, which is the first version that carries `[CollectionBuilder]` on `ImmutableArray<T>` — and detection cannot see either.
+The package is never absent, since every analyzer project gets it transitively from `Microsoft.CodeAnalysis`, but an analyzer pinned to an old Roslyn for Visual Studio compatibility gets an old one with it: `Microsoft.CodeAnalysis.CSharp` 4.0.1 resolves `System.Collections.Immutable` 5.0.0, and a collection expression there is `error CS9210`, "This version of `ImmutableArray<T>` cannot be used with collection expressions".
 The conservative form compiles either way, and where the repository wants the other one its own build says so, as IDE0090 or IDE0303, which SKILL.md 6e then fixes.
 This applies to new code only: an existing property or descriptor is matched, never rewritten.
 
@@ -47,7 +48,8 @@ Before writing a descriptor, read one existing descriptor in the target project 
 | `Resources.ResourceManager` accessed through a helper (`ResourceHelper.GetLocalizable(...)`) | Use the helper. |
 | No descriptor exists yet, but the resource class has a hand-written partial (`localizableStringHelper` / `localizableStringProperties`) | Follow "Localizable strings" below. |
 | `SupportedDiagnostics` already lists descriptors | Add the new one in the same form the existing entries use, whatever that is. |
-| `SupportedDiagnostics` declared with no initializer | `= ImmutableArray.Create<DiagnosticDescriptor>(Xxx);`. A collection expression `[ a, b ]` needs `LangVersion` 12+ **and** a `System.Collections.Immutable` with `CollectionBuilderAttribute` — which a bare `netstandard2.0` project has only if something polyfills it — so it is not what an empty property gets initialised with. Switch only when the project's analyzers ask (IDE0303) and it compiles. |
+| `SupportedDiagnostics` initialised with a collection expression, `= [ ... ]` or `= []` | Same form, adding the new descriptor to it. An empty `= []` is still proof the form compiles here, so this row covers it rather than the no-initializer row below. If the build answers `CS9210` anyway, fall back to `ImmutableArray.Create<DiagnosticDescriptor>(...)` for the whole initializer — the one case where rewriting an existing one is right, since it no longer compiles. |
+| `SupportedDiagnostics` declared with no initializer | `= ImmutableArray.Create<DiagnosticDescriptor>(Xxx);`. There is no existing form to match here, so write the conservative one and let 6e shorten it if the project's analyzers ask (IDE0303). |
 
 ## Localizable strings
 
@@ -90,7 +92,7 @@ Do not implement the analysis; that is a separate task.
 ### title, messageFormat, description
 
 All three take a `LocalizableString`, and `string` converts to one implicitly, so both forms compile: plain literals in the constructor, or `LocalizableResourceString` instances pointing at resx entries named `{Name}Title`, `{Name}Message`, `{Name}Description`.
-Which one a new descriptor uses is not a judgement call — SKILL.md Step 4 "Where the strings live" settles it from what the project already does, and asks only when the project has no descriptor at all.
+Which one a new descriptor uses is not a judgement call — SKILL.md Step 4.6 "Where the strings live" settles it from what the target project already does crossed with what the request asked for, and its table says which of those combinations is a question.
 The content rules below hold for either form.
 Content guidelines that keep `Microsoft.CodeAnalysis.Analyzers` quiet:
 
