@@ -131,9 +131,9 @@ Which file the resx route uses, once SKILL.md Step 4.6 has settled that the stri
 
 | The target project has | The file |
 |------------------------|----------|
-| no resx at all | a new `Resources.resx` beside the descriptor, created without asking — choosing the resx route was itself the consent |
-| resx, but no group holding diagnostic strings (`*Title` / `*Message` entries) | ask: share that file, or create a new `Resources.resx`. Moving in with somebody else’s strings is the user’s call, never assumed |
-| several groups, exactly one of them holding diagnostic strings | that group, without asking |
+| no resx at all | a new `Resources.resx` beside the descriptor — created without asking only when the request itself asked for resx, and otherwise the question, since creating a file and registering it in the csproj is not something a reading of the repository can consent to |
+| resx, but no group holding diagnostic strings | ask: share that file, or create a new `Resources.resx`. Moving in with somebody else’s strings is the user’s call, never assumed |
+| exactly one group holding diagnostic strings (`*Title` / `*Message` entries), whether or not other groups exist | that group, without asking |
 | several groups with diagnostic strings spread across them | ask, offering the likeliest and saying the others exist |
 
 The likeliest is the group holding the strings of existing diagnostics in the **same category** as the new one, and failing that the group holding the most diagnostic strings.

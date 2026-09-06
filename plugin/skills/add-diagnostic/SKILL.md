@@ -132,9 +132,8 @@ Draft before asking, so the user reviews concrete text rather than open question
 
    | The project's descriptors | The request asked for | What to do |
    |---------------------------|-----------------------|------------|
-   | none | nothing | Ask, with the resx route recommended. |
-   | none | literals | Literals, no question. |
-   | none | resx | resx, no question. |
+   | none | nothing, or resx | resx. |
+   | none | literals | Literals. |
    | literals | nothing | Literals. |
    | resx | nothing | resx. |
    | literals | resx | Ask: does this one descriptor go to resx? |
@@ -142,17 +141,18 @@ Draft before asking, so the user reviews concrete text rather than open question
    | mixed | nothing, or resx | resx. |
    | mixed | literals | Ask, recommending resx; literals if the user still says literals. |
 
-   A row that says *no question* still shows its answer in the proposal table below, where "Other" can correct it; it only means the question round does not spend a slot on it.
+   Rows that settle by themselves still show their answer in the proposal table below; they only mean the question round spends no slot on the route.
+   The consent this step used to collect is not about the route at all but about the file: taking the resx route can mean creating one and registering it in the csproj, and neither the repository nor the request has agreed to that. `references/resources.md`, "Creating a new resx file", decides which file and asks whenever creating or sharing one is not already what the request called for.
    Do not weigh RS1007 against the neighbours or check whether the project enables it.
    Consistency inside a project is worth more than either form on its own, so mixing is never the goal — but an explicit request outranks that, and answering *yes, this one* above leaves the project mixed on purpose. Say nothing about the existing descriptors when it does: converting them is a repository-wide change this skill does not make, and not something to raise here.
-   Whichever row asks, it asks **once**: the options name the resx file, so the route and the file are settled by the same answer, and that answer is also the consent to create or share the file (`references/resources.md`, "Creating a new resx file", picks the file and says which cases need asking at all).
+   However many rows could ask, here or in that other table, the strings get **one** question at most: its options name the resx file, so the route and the file are settled by the same answer.
 
 Then print the proposal as a short table in the message (name, ID band/category, title, message, description, target class, where the strings go, documentation yes/no) and, directly after it, ask **one** `AskUserQuestion` round.
 It is the only round the design goes through: everything Step 1 left open — the prefix when `diagnosticPrefix` is null, and the arrangement each code-fix project reporting `idSharing: none` needs — belongs in it alongside what this step leaves open, so the user answers once and Step 6 then runs without stopping.
 Candidates, in priority order when more than four exist:
 
 1. prefix (only when null and the request does not state one; it names every future ID)
-2. where the strings live (only when the table in 4.6 asks; it is also the consent to create or share a resx file)
+2. where the strings live (only when 4.6 or the resx-file table asks; it is also the consent to create or share a resx file)
 3. ID sharing (only when a code-fix project reports `none`; it is the consent to edit that project file, and `AnalyzerProject` is the recommendation)
 4. severity
 5. `suppressedDiagnosticId` (suppressions only)
@@ -211,7 +211,7 @@ Perform the edits in this order (6a–6h) so later edits can rely on earlier one
 - **6d.
   resx** (resx route only; the literal route has nothing to do here), in this order:
   1. Target: write to the resource group Step 4 settled on.
-     Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: the file comes from `references/resources.md`, "Creating a new resx file", either as the option the user answered or as one of the two rows that table settles without asking.
+     Never write diagnostic strings into a resx that holds none, and never create a resx, on the strength of a reading of the repository alone: the file comes from `references/resources.md`, "Creating a new resx file", either as the option the user answered or as one of the rows that table settles without asking.
   2. New file, only when Step 4 settled on one: write it from the neutral file of an existing group and **register it in the csproj**, with the metadata the repository's own resx files imply (`references/resources.md`, "Creating a new resx file") — `<Generator>ResXFileCodeGenerator</Generator>` where the repository uses that generator, an empty `<Generator></Generator>` where it uses `Microsoft.CodeAnalysis.ResxSourceGenerator`, and the `StronglyTyped*` metadata when it uses neither.
      The first makes the class Visual Studio's to generate, so treat it as `requiresVisualStudioRegeneration` from here on; the second needs that project to already reference the package, which is a package reference to ask about rather than add.
   3. Back up, but only when the group already existed: **copy every culture file of that group to the scratchpad first**.

@@ -48,7 +48,7 @@
       "summary": "何もないアナライザー プロジェクトで、IDs ファイルから resx まで一式を作って最初の診断を足せること。",
       "fixture": "greenfield",
       "prompt": "This is our first analyzer rule. Warn when a public method accepts a CancellationToken parameter and never forwards it to the calls it makes. Category Usage, severity Warning. We want to use FAB as our diagnostic ID prefix.",
-      "expected_output": "何もない状態からの立ち上げ。DiagnosticIds.cs と DiagnosticCategories.cs が作成され、Usage が最初の未使用バンド 1 を取って FAB1001 になる。ディスクリプタを持つクラスが無いので文字列の置き場所は質問になり、推奨の resx ルートが選ばれて Resources.resx が新規作成され csproj に登録される。AnalyzerReleases の Shipped/Unshipped 対が作成され、Shipped はコメント 2 行のみ。ドキュメントは docs.suggestedDirectory に作られる。",
+      "expected_output": "何もない状態からの立ち上げ。DiagnosticIds.cs と DiagnosticCategories.cs が作成され、Usage が最初の未使用バンド 1 を取って FAB1001 になる。ディスクリプタが無くリクエストも指定していないので文字列は問わず resx ルートになるが、プロジェクトに resx が 1 つも無いので Resources.resx を新規作成してよいかが質問になり、承諾されて csproj に登録される。AnalyzerReleases の Shipped/Unshipped 対が作成され、Shipped はコメント 2 行のみ。ドキュメントは docs.suggestedDirectory に作られる。",
       "assertions": [
         { "text": "DiagnosticIds.cs が作成されている", "kind": "fileExists", "glob": "src/Fabrikam.Analyzers/DiagnosticIds.cs" },
         { "text": "FAB1001 が採番されている", "kind": "jsonContains", "path": "diagnosticIds.ids[].value", "value": "FAB1001" },
@@ -102,6 +102,48 @@
         { "text": "SupportedSuppressions に登録されている", "kind": "anyContains", "glob": "src/Northwind.Analyzers/*.cs", "pattern": "SupportedSuppressions[\\s\\S]{0,400}{name:NWDS0001}\\b" },
         { "text": "AnalyzerReleases に抑制の行を追加していない", "kind": "notContains", "glob": "src/Northwind.Analyzers/AnalyzerReleases.*.md", "pattern": "NWDS" },
         { "text": "resx を作っていない", "kind": "fileMissing", "glob": "**/*.resx" },
+        { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
+        { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }
+      ]
+    },
+    {
+      "id": "literal-project-asks-for-resx",
+      "summary": "既存のディスクリプタがリテラルでもリクエストが resx を求めたら新規分だけ resx にし、既存のリテラルには手を触れないこと。",
+      "fixture": "literal",
+      "prompt": "async void なメソッドを警告するルールを追加してください。カテゴリは Usage、重要度は Warning です。文字列は resx に置いてローカライズできるようにしてください。",
+      "expected_output": "隣のディスクリプタはリテラルだがリクエストが resx を求めているので、この 1 件だけ resx にするかが質問になり、推奨どおり resx が選ばれる。プロジェクトに resx が無くリクエストが resx を求めているので Resources.resx は訊かずに新規作成され csproj に登録される。既存の NWD1001 / NWD1002 はリテラルのまま残り、移行は提案されない。採番は Usage バンド 1 の続きで NWD1003。",
+      "assertions": [
+        { "text": "NWD1003 が採番されている", "kind": "jsonContains", "path": "diagnosticIds.ids[].value", "value": "NWD1003" },
+        { "text": "ID は 1 つだけ増えている", "kind": "jsonCount", "path": "diagnosticIds.ids[]", "count": 3 },
+        { "text": "新しいディスクリプタが resx を参照している", "kind": "anyContains", "glob": "src/Northwind.Analyzers/*.cs", "pattern": "DiagnosticDescriptor\\s+{name:NWD1003}[\\s\\S]{0,800}LocalizableResourceString" },
+        { "text": "resx が新規作成されている", "kind": "fileExists", "glob": "src/Northwind.Analyzers/*.resx" },
+        { "text": "resx に Title / Message / Description の 3 エントリが入っている", "kind": "resxEntryCount", "glob": "src/Northwind.Analyzers/*.resx", "count": 3 },
+        { "text": "resx が csproj に登録されている", "kind": "contains", "glob": "src/Northwind.Analyzers/Northwind.Analyzers.csproj", "pattern": "EmbeddedResource" },
+        { "text": "既存のディスクリプタはリテラルのまま残っている", "kind": "contains", "glob": "src/Northwind.Analyzers/NorthwindAnalyzer.cs", "pattern": "\"Disposable field should be disposed\"" },
+        { "text": "既存 ID の文字列を resx に移していない", "kind": "notContains", "glob": "src/Northwind.Analyzers/*.resx", "pattern": "DisposableFieldShouldBeDisposed|CancellationTokenShouldBeForwarded" },
+        { "text": "AnalyzerReleases.Unshipped.md に行が追加されている", "kind": "contains", "glob": "src/Northwind.Analyzers/AnalyzerReleases.Unshipped.md", "pattern": "NWD1003\\s*\\|\\s*Usage" },
+        { "text": "ドキュメント ページが作成されている", "kind": "fileExists", "glob": "**/NWD1003.md" },
+        { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
+        { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }
+      ]
+    },
+    {
+      "id": "greenfield-literal-request",
+      "summary": "ディスクリプタが 1 つも無くても、リクエストがリテラルを指定したら resx を作らないこと。",
+      "fixture": "greenfield",
+      "prompt": "This is our first analyzer rule. Warn when a public method accepts a CancellationToken parameter and never forwards it to the calls it makes. Category Usage, severity Warning. Use FAB as our diagnostic ID prefix. Keep the strings as plain literals in the descriptor — we have no plans to localize.",
+      "expected_output": "グリーンフィールドだがリクエストがリテラルを指定しているので、文字列の置き場所は質問にならずリテラル ルートになる。resx は作られず csproj も変更されない。採番は Usage が最初の未使用バンド 1 を取って FAB1001。AnalyzerReleases の Shipped/Unshipped 対とドキュメントは通常どおり作られる。",
+      "assertions": [
+        { "text": "FAB1001 が採番されている", "kind": "jsonContains", "path": "diagnosticIds.ids[].value", "value": "FAB1001" },
+        { "text": "採番されたのは 1 件だけ", "kind": "jsonCount", "path": "diagnosticIds.ids[]", "count": 1 },
+        { "text": "Usage バンドのヘッダーが書かれている", "kind": "contains", "glob": "src/Fabrikam.Analyzers/DiagnosticIds.cs", "pattern": "// Usage \\(FAB1xxx\\)" },
+        { "text": "resx を作っていない (リテラル ルート)", "kind": "fileMissing", "glob": "**/*.resx" },
+        { "text": "resx を参照するコードを書いていない", "kind": "notContains", "glob": "src/Fabrikam.Analyzers/*.cs", "pattern": "LocalizableResourceString" },
+        { "text": "csproj に resx を登録していない", "kind": "notContains", "glob": "src/Fabrikam.Analyzers/Fabrikam.Analyzers.csproj", "pattern": "EmbeddedResource" },
+        { "text": "ディスクリプタ フィールドが宣言されている", "kind": "anyContains", "glob": "src/Fabrikam.Analyzers/*.cs", "pattern": "DiagnosticDescriptor\\s+{name:FAB1001}\\b" },
+        { "text": "SupportedDiagnostics に登録されている", "kind": "anyContains", "glob": "src/Fabrikam.Analyzers/*.cs", "pattern": "SupportedDiagnostics[\\s\\S]{0,400}{name:FAB1001}\\b" },
+        { "text": "Unshipped に FAB1001 の行がある", "kind": "contains", "glob": "src/Fabrikam.Analyzers/AnalyzerReleases.Unshipped.md", "pattern": "FAB1001\\s*\\|\\s*Usage" },
+        { "text": "ドキュメント ページが作成されている", "kind": "fileExists", "glob": "**/FAB1001.md" },
         { "text": "find-conventions が leftovers を報告しない", "kind": "noLeftovers" },
         { "text": "ビルドが成功し、警告が実行前より増えていない", "kind": "build" }
       ]

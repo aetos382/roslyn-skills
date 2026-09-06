@@ -1,62 +1,76 @@
 # TODO
 
-Notes for maintainers.
-Nothing here is distributed: only `plugin/` goes into the package.
+メンテナー向けのメモ。
+配布物には入らない（パッケージに入るのは `plugin/` だけ）。
 
-## Layer 2 — an analyzer that checks analyzers
+## 層 2 — アナライザーをチェックするアナライザー
 
-A NuGet package complementing `Microsoft.CodeAnalysis.Analyzers`, never duplicating what it already reports.
-Scope is whatever a single compilation can see:
+`Microsoft.CodeAnalysis.Analyzers` を補完する NuGet パッケージ。
+あちらが既に報告するものは決して重複して見ない。
+範囲は「1 つのコンパイルから見えるもの」。
 
-- literal strings and resx mixed across the descriptors of one project
-- a band header comment (`// Usage (FAB1xxx)`) disagreeing with the `category` argument, which is readable because comments are trivia
-- descriptor field name against the ID constant name
-- duplicate IDs, and numbers outside their category's band
-- a descriptor that is reported but missing from `SupportedDiagnostics`
-- `helpLinkUri` deviating from the shape the rest of the project uses
+- 1 つのプロジェクトのディスクリプタでリテラル文字列と resx が混在している
+- バンド ヘッダーのコメント（`// Usage (FAB1xxx)`）と `category` 引数の不一致。コメントは trivia なので構文木から読める
+- ディスクリプタのフィールド名と ID 定数名の不一致
+- ID の重複と、カテゴリのバンド外の番号
+- report しているのに `SupportedDiagnostics` に載っていないディスクリプタ
+- プロジェクトの他のディスクリプタと形の違う `helpLinkUri`
 
-Separate the general truths from this repository's house style.
-Mixing and a missing `SupportedDiagnostics` entry are defects anywhere; the band scheme is our opinion and should be opt-in through `.editorconfig` analyzer options.
+一般的な真実と、このリポジトリの流儀を分けること。
+混在と `SupportedDiagnostics` 未登録はどこでも欠陥だが、バンド方式はこちらの意見なので `.editorconfig` の analyzer option でオプトインにする。
 
-Side effect worth having: the conventions become an executable specification, so `evals/AddDiagnostic/evals.json` could assert "this analyzer reports nothing" instead of matching regexes.
+副次的な効果として、規約が実行可能な仕様になる。
+`evals/AddDiagnostic/evals.json` の assertion を、正規表現の照合ではなく「このアナライザーが何も報告しない」に置き換えられる。
 
-Open: whether RS1007 is enabled by default, which decides whether a mixing rule is redundant.
-This could not be verified — Learn has no RS1xxx pages, and neither the GitHub MCP server nor `gh search code` reaches `dotnet/roslyn-analyzers`.
+未確認: RS1007 が既定で有効かどうか。混在ルールが冗長かどうかがこれで決まる。
+Learn に RS1xxx のページが無く、GitHub MCP サーバーも `gh search code` も `dotnet/roslyn-analyzers` に届かなかったため、確認できていない。
 
-## Layer 3 — a doctor skill
+## 層 3 — doctor スキル
 
-For what no analyzer can see:
+どのアナライザーからも見えないもの向け。
 
-- whether the page `helpLinkUri` names actually exists
-- `Microsoft.CodeAnalysis.Analyzers` not referenced at all, which is layer 2's own blind spot and the reason layer 3 has to exist
-- a missing `AnalyzerReleases.Shipped.md` / `Unshipped.md` pair
-- resx registration in the csproj, and the shape of the documentation directory
-- whether a documentation URL can be built from the git remote
+- `helpLinkUri` が指すページが実在するか
+- `Microsoft.CodeAnalysis.Analyzers` がそもそも参照されていない。層 2 自身の盲点であり、層 3 が必要な理由
+- `AnalyzerReleases.Shipped.md` / `Unshipped.md` の対が無い
+- csproj への resx 登録と、ドキュメント ディレクトリの形
+- git リモートからドキュメント URL を組み立てられるか
 
-Build layer 2 first: layer 3's scope depends on what layer 2 catches, not the reverse.
-Both wait until `add-diagnostic`'s conventions settle, since those conventions are the specification.
+層 2 を先に作る。
+層 3 の範囲は層 2 が何を拾うかに依存するが、逆向きの依存は無い。
+どちらも `add-diagnostic` の規約が固まってから着手する。その規約が仕様そのものだから。
 
-## resx maintenance — mostly not this repository's business
+## resx の保守 — 大半はこのリポジトリの仕事ではない
 
-Three things are wanted, and only the first is about Roslyn:
+3 つ欲しいものがあり、Roslyn の話なのは 1 つ目だけ。
 
-1. find descriptors mixing literal strings and resx, and unify them on resx
-2. check that every resx group has every ID in every culture file, and fill the gaps in both directions — an ID the neutral file has and a satellite lacks, and an orphan only a satellite has
-3. add a new language to an existing resx group
+1. リテラル文字列と resx が混在しているディスクリプタを見つけ、resx に統一する
+2. 全ての resx グループについて、全カルチャ ファイルに全 ID が揃っているかを確認し、両方向の欠落を埋める。中立ファイルにあってサテライトに無い ID と、サテライトにしか無い孤児
+3. 既存の resx グループに新しい言語を追加する
 
-2 and 3 apply to any .NET project with localized resources, so they do not belong here.
-1 splits: detection is layer 2 or layer 3, and the conversion itself belongs with 2 and 3.
+2 と 3 はローカライズされたリソースを持つあらゆる .NET プロジェクトに当てはまるので、ここには属さない。
+1 は分割される。検出は層 2 か層 3、変換そのものは 2 と 3 と同じ場所。
 
-2 is worth building because the compiler is silent about it.
-Measured: a project with `Resources.resx` (Alpha, Beta) and `Resources.fr.resx` (Alpha, Gamma) builds with no warning at all, under `AnalysisLevel=latest-all` and `WarningLevel=9999` too.
-The missing entry falls back to the neutral language at run time, and the orphan ships in `fr/*.resources.dll` where nothing can reference it.
+2 を作る価値があるのは、コンパイラが何も言わないから。
+実測: `Resources.resx`（Alpha, Beta）と `Resources.fr.resx`（Alpha, Gamma）を持つプロジェクトは、`AnalysisLevel=latest-all` と `WarningLevel=9999` の下でも警告ゼロでビルドされる。
+欠落したエントリは実行時に中立言語へフォールバックし、孤児は誰も参照できない `fr/*.resources.dll` に入って出荷される。
 
-If these move to another plugin, the tool here already holds the general resx parts — `AddResxEntriesCommand`, `Internal/ResxName.cs`, and most of `FindConventionsCommand`'s resx-group detection.
-Duplicate them, extract a shared package, or keep one tool that both plugins pin; not decided.
+これらを別プラグインに出す場合、ツール側に既に一般的な resx 部分がある。
+`AddResxEntriesCommand`、`Internal/ResxName.cs`、そして `FindConventionsCommand` の resx グループ検出の大半。
+重複させる、共有パッケージに切り出す、1 つのツールを両プラグインがピン留めする、のいずれか。未決。
 
-## add-diagnostic and the mix it creates
+## add-diagnostic が作る混在
 
-`add-diagnostic` writes the new descriptor to resx when the request asks for it, even where the project's existing descriptors use literals.
-That leaves the project mixed on purpose, and the skill says nothing about it.
-Once a doctor skill exists, those cases should also suggest running it.
-Until then nothing about this reaches the end user.
+`add-diagnostic` は、プロジェクトの既存ディスクリプタがリテラルであっても、リクエストが求めれば新しいディスクリプタを resx に書く。
+その結果プロジェクトは意図的に混在した状態になり、スキルはそれについて何も言わない。
+doctor スキルができたら、それらのケースで doctor の実行も提案するようにする。
+それまでは、この件は一切利用者に見せない。
+
+## eval を足すか決めていない経路
+
+Step 4.6 の表のうち、eval が無い行。
+
+- (resx, リテラル) — 質問し resx を推奨。`mature` フィクスチャにプロンプト違いの eval を足せば作れる
+- (混在, なし / リテラル / resx) — 新規フィクスチャが必要。その前に `find-conventions` が混在を判定できる情報を返しているかの確認が要る
+
+resx ファイル選択の表では、「resx はあるが診断文字列を持つグループが無い」と「複数グループに分散」が未カバー。
+どちらも珍しい形で、専用フィクスチャが要る。

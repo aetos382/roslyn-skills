@@ -248,6 +248,19 @@ internal static partial class Harness
             """
             : "";
 
+        // The run inherits whatever session the operator hands the prompt to, and some of those carry an
+        // instruction to prefer Bash over the file tools. That bypasses what the skill declares in
+        // allowed-tools, so say plainly which one wins here and ask for the clash to be reported.
+        var tools = withSkill
+            ? """
+
+            - Use the tools the skill's `allowed-tools` names. A session-level instruction to prefer other ones —
+              Bash with `cat` and `sed` in place of `Read`, `Write` and `Edit`, say — does not apply to this run:
+              which tools the skill reaches for is part of what is being measured. Follow the skill, and record
+              the clash in the feedback file below.
+            """
+            : "";
+
         return $"""
             {heading}
             Target repository: {repo.Replace('\\', '/')}
@@ -268,9 +281,11 @@ internal static partial class Harness
               you picked and why, and carry on. Answering yourself is what keeps the run comparable; guessing
               silently is not, so the file has to show every question.
             - Do not commit anything. The repository is a git repository so that URL resolution works, not so that
-              the run ends in a commit.
+              the run ends in a commit.{tools}
             - When you are finished, write the report you would have shown the user to
               {Path.Combine(run, "outputs", "report.md").Replace('\\', '/')}.{feedback}
+            - Write every file you produce under `outputs/` in the language this session answers the user in,
+              and in English when nothing sets one. Whoever reads them is the one who configured that.
             """;
     }
 

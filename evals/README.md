@@ -66,6 +66,11 @@ Its exit code is 0 only when every assertion passed.
 
 ### Running the agent
 
+Nothing here launches the agent: `new-run` writes `prompt.md` and stops, and you hand that to a session of your own.
+So a run inherits whatever that session is configured to do, and the harness cannot see it.
+One configuration matters enough to name: an instruction to prefer Bash — `cat`, `sed` — over `Read`, `Write` and `Edit` bypasses what a skill declares in `allowed-tools`, and with it whatever that skill's steps were protecting by naming a tool.
+A clean run under that instruction does not say the declared path works; the prompt therefore tells the agent the skill wins and asks for the clash in `feedback.md`, which is the only place it can surface.
+
 Both prompts are written for an agent with no human in front of it, which matters more here than it sounds.
 A skill that asks questions by design — as add-diagnostic does, gathering everything undecided into one round — turns a run that stops on a question into a run that measures nothing.
 So the prompt tells the agent to write each question it would have asked to `outputs/questions.md`, take the option the skill recommends, and carry on.
