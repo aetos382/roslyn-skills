@@ -25,7 +25,7 @@ Always prefer what the repository already does.
 | `docs.directory`, `docs.indexFile`, `docs.ruleDocs` | A directory already holds pages named after IDs (`CTS1001.md`, `CTS1001-disposable-field.md`) | Use it. Copy the existing naming scheme exactly, including any slug after the ID; ask when two schemes coexist. |
 | `docs.mentionFiles` | Markdown elsewhere names existing IDs, e.g. one `Rules.md` listing every rule or a README table | The repository documents rules in that file. Propose adding a section or row there instead of starting a per-ID layout. |
 | `docs.candidateDirectories` | Existing folders called `docs`, `doc`, `Documentation`, `wiki`, `rules`, `analyzers`, `diagnostics` (shallowest first) | No rule pages yet, but the repository has a documentation home. Put the new page under it, following its casing (`Documentation/rules/`, not `docs/rules/`). |
-| `docs.suggestedDirectory` | The path derived from the above, or `docs/rules` when the repository has nothing | Use it as the proposed path in the question, and create the directory when the user agrees. |
+| `docs.suggestedDirectory` | The `docsDir` from the config file when it names a directory that does not exist yet, else the path derived from the above, else `docs/rules` when the repository has nothing | Use it as the proposed path in the question, and create the directory when the user agrees. |
 
 Naming a new directory: keep the parent's existing casing and add a `rules` subdirectory (`Documentation/rules`).
 When the candidate is already called `rules`, use it as is.
@@ -110,14 +110,28 @@ The directory is the plugin name and the file is the skill name, so a plugin wit
 A malformed block is an error, not a fallback: the tool reports `{"error": ..., "hint": ...}` with the line number and exit 1 instead of carrying on with the file ignored.
 A mistyped key would otherwise look exactly like a missing one, and the report would describe conventions the repository does not follow.
 
+### When a configured path is not there
+
+`diagnosticIdsFile`, `suppressionIdsFile`, `categoriesFile`, `docsDir` and `docsIndexFile` name paths, and what the scan found decides what an unresolved one means:
+
+| The scan | What the path is | What `find-conventions` does |
+|----------|------------------|------------------------------|
+| found that piece somewhere else | a value a rename left behind, or a typo | Exit 1, naming both the configured path and the one found. Detection is never substituted: the report would then describe a file the settings deliberately pointed away from. |
+| found nothing of that kind | the destination this run is about to create | Accepts it. `docs.suggestedDirectory` becomes the configured `docsDir`; the ID and categories sections stay `null` as they would in any repository that has none. Git cannot carry an empty directory, so a repository that committed its settings before its first rule page is normally in exactly this state. |
+
+Escaping the first case takes an edit to the settings file, and there are only two repairs: correct the value, or remove the key and let detection answer.
+Ask the user which of the two paths is right — the file is committed, and nothing in the scan can tell a file that moved from a name that was mistyped — then make the edit and run `find-conventions` again.
+Every configured path is resolved before the check fires, so one round of repairs clears all of them.
+There is deliberately no flag that ignores the settings: it would be reached for instead of the repair, and the report would be wrong again next run.
+
 | Key | Meaning |
 |-----|---------|
 | `diagnosticPrefix` | Three-letter prefix (`CTS`). |
 | `idDigits` | Digits in the number (default 4). |
-| `diagnosticIdsFile` / `suppressionIdsFile` / `categoriesFile` | Repository-relative paths. |
+| `diagnosticIdsFile` / `suppressionIdsFile` / `categoriesFile` | Repository-relative paths. A path that is not there is an error when the scan found that piece elsewhere (see below). |
 | `categories` | Map of category name → band digit. |
 | `resxBaseName` | Base name of the resource group holding diagnostic strings (`Resources`). |
-| `docsDir` / `docsIndexFile` | Documentation location. |
+| `docsDir` / `docsIndexFile` | Documentation location. `docsIndexFile` is relative to `docsDir`, not to the repository root. |
 | `docUrlTemplate` | URL template with `{owner}`, `{repo}`, `{branch}`, `{path}`. |
 | `idSharing` | `AnalyzerProject`, `LinkedFile`, `SharedProject`, or `SharedFile` (see `id-conventions.md`). Usually left out; detection reports it. |
 

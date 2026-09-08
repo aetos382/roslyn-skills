@@ -41,6 +41,9 @@ internal static partial class FindConventionsCommand
     /// <summary>How many markdown files mentioning a known ID are reported before the scan gives up.</summary>
     private const int MentionFileLimit = 20;
 
+    /// <summary>Index file names a documentation directory is expected to use, in the order they are tried.</summary>
+    private static readonly string[] IndexFileNames = ["README.md", "index.md", "Index.md"];
+
     public static Command Create()
     {
         var path = new Option<string>("--path")
@@ -89,6 +92,35 @@ internal static partial class FindConventionsCommand
         if (config.Error is { } configError)
         {
             return Json.Fail(configError, $"Fix the json block in {Config.RelativePath}, or delete the file to fall back to detection.");
+        }
+
+        // A configured path that does not resolve is either a destination this run is about to create or a value
+        // a rename left behind, and what the scan found tells the two apart. Found the piece elsewhere: the
+        // settings contradict the repository, and carrying on with the detected file would report conventions the
+        // repository does not follow — the same reason a malformed block is an error rather than a fallback.
+        // Found nothing: there is nothing to contradict and nothing to substitute, so the path is simply where
+        // the piece is going to live, which is the normal state of a repository that committed its settings
+        // before its first diagnostic.
+        var configConflicts = new List<string>();
+        string? Configured(string key, string basePath, bool directory, string? detected)
+        {
+            if (config.Get(key) is not { } value)
+            {
+                return detected;
+            }
+
+            var full = Path.GetFullPath(Path.Combine(basePath, value));
+            if (directory ? Directory.Exists(full) : File.Exists(full))
+            {
+                return full;
+            }
+
+            if (detected is not null)
+            {
+                configConflicts.Add($"{key} is '{value}', which is not there, while the scan found '{scan.Rel(detected)}'");
+            }
+
+            return null;
         }
 
         // ---------------------------------------------------------------------------
@@ -278,36 +310,31 @@ internal static partial class FindConventionsCommand
         prefix ??= IdConst.InferPrefix(idFiles.Values.SelectMany(v => v.Ids));
         prefix ??= idFiles.Values.Select(v => IdsFileText.ReadHeaderPrefix(v.Text)).FirstOrDefault(p => p is not null);
 
-        JsonObject? DescribeIdsFile(bool suppression, string? configuredPath)
+        JsonObject? DescribeIdsFile(bool suppression, string key)
         {
-            string? file = null;
-            if (configuredPath is not null && File.Exists(Path.Combine(root, configuredPath)))
+            Func<IdConst, bool> matches = suppression
+                ? i => prefix is not null ? i.IsSuppressionOf(prefix) : i.Letters.EndsWith('S')
+                : i => prefix is null || i.IsDiagnosticOf(prefix);
+
+            Func<string?, bool> classMatches = suppression
+                ? c => c is not null && c.Contains("Suppress", StringComparison.OrdinalIgnoreCase)
+                : c => c is not null && !c.Contains("Suppress", StringComparison.OrdinalIgnoreCase);
+
+            // Detection runs even when the settings name a file, because a configured path that is not there is
+            // only an error when the scan can point at the file it should have named.
+            var detected = idFiles
+                .Select(kv => (Path: kv.Key, Count: kv.Value.Ids.Count(matches), ClassOk: classMatches(kv.Value.ClassName)))
+                .Where(x => x.Count > 0 || x.ClassOk)
+                .OrderByDescending(x => x.Count).ThenByDescending(x => x.ClassOk).ThenBy(x => x.Path, StringComparer.Ordinal)
+                .Select(x => x.Path)
+                .FirstOrDefault();
+
+            if (detected is not null && idFiles[detected].Ids.Count == 0 && !classMatches(idFiles[detected].ClassName))
             {
-                file = Path.GetFullPath(Path.Combine(root, configuredPath));
+                detected = null;
             }
-            else
-            {
-                Func<IdConst, bool> matches = suppression
-                    ? i => prefix is not null ? i.IsSuppressionOf(prefix) : i.Letters.EndsWith('S')
-                    : i => prefix is null || i.IsDiagnosticOf(prefix);
 
-                Func<string?, bool> classMatches = suppression
-                    ? c => c is not null && c.Contains("Suppress", StringComparison.OrdinalIgnoreCase)
-                    : c => c is not null && !c.Contains("Suppress", StringComparison.OrdinalIgnoreCase);
-
-                file = idFiles
-                    .Select(kv => (Path: kv.Key, Count: kv.Value.Ids.Count(matches), ClassOk: classMatches(kv.Value.ClassName)))
-                    .Where(x => x.Count > 0 || x.ClassOk)
-                    .OrderByDescending(x => x.Count).ThenByDescending(x => x.ClassOk).ThenBy(x => x.Path, StringComparer.Ordinal)
-                    .Select(x => x.Path)
-                    .FirstOrDefault();
-
-                if (file is not null && idFiles[file].Ids.Count == 0 && !classMatches(idFiles[file].ClassName))
-                {
-                    file = null;
-                }
-            }
-            if (file is null)
+            if (Configured(key, root, directory: false, detected) is not { } file)
             {
                 return null;
             }
@@ -337,8 +364,8 @@ internal static partial class FindConventionsCommand
             };
         }
 
-        var diagIds = DescribeIdsFile(false, config.Get("diagnosticIdsFile"));
-        var suppIds = DescribeIdsFile(true, config.Get("suppressionIdsFile"));
+        var diagIds = DescribeIdsFile(false, "diagnosticIdsFile");
+        var suppIds = DescribeIdsFile(true, "suppressionIdsFile");
         if (diagIds is not null && suppIds is not null && diagIds["path"]!.ToString() == suppIds["path"]!.ToString())
         {
             suppIds = null; // same file cannot be both; suppressions are expected in their own file
@@ -349,22 +376,19 @@ internal static partial class FindConventionsCommand
         // ---------------------------------------------------------------------------
         JsonObject? categoriesInfo = null;
         {
-            string? file = null;
-            if (config.Get("categoriesFile") is { } cfgCat && File.Exists(Path.Combine(root, cfgCat)))
-            {
-                file = Path.GetFullPath(Path.Combine(root, cfgCat));
-            }
-            else if (categoryFiles.Count > 0)
+            string? detected = null;
+            if (categoryFiles.Count > 0)
             {
                 // Prefer the categories class that sits next to the IDs file; otherwise the one with most constants.
                 var idsDir = diagIds is not null ? Path.GetDirectoryName(Path.Combine(root, diagIds["path"]!.ToString())) : null;
-                file = categoryFiles.Keys
+                detected = categoryFiles.Keys
                     .OrderByDescending(k => idsDir is not null && string.Equals(Path.GetDirectoryName(k), idsDir, StringComparison.OrdinalIgnoreCase))
                     .ThenByDescending(k => CSharpSource.Parse(categoryFiles[k].Text).ConstStrings().Count())
                     .ThenBy(k => k, StringComparer.Ordinal)
                     .First();
             }
 
+            var file = Configured("categoriesFile", root, directory: false, detected);
             if (file is not null)
             {
                 // Only a configured path reaches this without having been read already; when it cannot be read,
@@ -575,19 +599,12 @@ internal static partial class FindConventionsCommand
 
         var allMarkdown = scan.Files(root, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
 
-        string? docsDir = null;
-        if (config.Get("docsDir") is { } cfgDocs && Directory.Exists(Path.Combine(root, cfgDocs)))
-        {
-            docsDir = Path.GetFullPath(Path.Combine(root, cfgDocs));
-        }
-        else
-        {
-            docsDir = allMarkdown
-                .Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f)) || suppDocRegex.IsMatch(Path.GetFileName(f)))
-                .GroupBy(f => Path.GetDirectoryName(f)!)
-                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
-                .Select(g => g.Key).FirstOrDefault();
-        }
+        var detectedDocsDir = allMarkdown
+            .Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f)) || suppDocRegex.IsMatch(Path.GetFileName(f)))
+            .GroupBy(f => Path.GetDirectoryName(f)!)
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => g.Key).FirstOrDefault();
+        var docsDir = Configured("docsDir", root, directory: true, detectedDocsDir);
 
         // Each candidate carries how many Markdown files it holds, counting subdirectories: a directory left
         // behind empty by an interrupted run is otherwise indistinguishable from one full of pages, and the
@@ -661,15 +678,20 @@ internal static partial class FindConventionsCommand
             }
         }
 
-        // Where a new page should go when nothing exists yet: under the shallowest documentation-ish directory,
-        // else the conventional docs/rules.
+        // Where a new page should go when nothing exists yet: the directory the settings name, else under the
+        // shallowest documentation-ish directory, else the conventional docs/rules. A configured directory that
+        // is not there yet still decides this, because git cannot carry an empty one: a repository that committed
+        // its settings before its first rule page has no other way to say where the pages belong, and proposing
+        // a different directory would quietly start a second layout.
         var suggested = docsDir is not null
             ? scan.Rel(docsDir)
-            : candidateDirs.Count > 0
-                ? (Path.GetFileName(candidateDirs[0].Path).Equals("rules", StringComparison.OrdinalIgnoreCase)
-                    ? candidateDirs[0].Path
-                    : candidateDirs[0].Path + "/rules")
-                : "docs/rules";
+            : config.Get("docsDir") is { } plannedDocsDir
+                ? plannedDocsDir.Replace('\\', '/').Trim('/')
+                : candidateDirs.Count > 0
+                    ? (Path.GetFileName(candidateDirs[0].Path).Equals("rules", StringComparison.OrdinalIgnoreCase)
+                        ? candidateDirs[0].Path
+                        : candidateDirs[0].Path + "/rules")
+                    : "docs/rules";
 
         var docs = new JsonObject
         {
@@ -691,18 +713,30 @@ internal static partial class FindConventionsCommand
         if (docsDir is not null)
         {
             docs["directory"] = scan.Rel(docsDir);
-            foreach (var idx in new[] { config.Get("docsIndexFile"), "README.md", "index.md", "Index.md" })
+
+            // The index is named relative to the documentation directory. A configured name that is not there
+            // leaves indexFile null rather than falling through to README.md: an index the settings did not name
+            // is where the new row would go missing.
+            var detectedIndex = IndexFileNames
+                .Select(name => Path.Combine(docsDir, name))
+                .FirstOrDefault(File.Exists);
+            if (Configured("docsIndexFile", docsDir, directory: false, detectedIndex) is { } indexFile)
             {
-                if (idx is not null && File.Exists(Path.Combine(docsDir, idx)))
-                {
-                    docs["indexFile"] = scan.Rel(Path.Combine(docsDir, idx));
-                    break;
-                }
+                docs["indexFile"] = scan.Rel(indexFile);
             }
 
             var mds = scan.FilesIn(docsDir, "*.md").OrderBy(f => f, StringComparer.Ordinal).ToList();
             docs["ruleDocs"] = Json.Array(mds.Where(f => ruleDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
             docs["suppressionDocs"] = Json.Array(mds.Where(f => suppDocRegex.IsMatch(Path.GetFileName(f))).Select(scan.Rel));
+        }
+
+        // Every configured path has been resolved by here, so one repair round covers all of them at once. The
+        // check sits ahead of the git queries below because those spawn processes this run is not going to use.
+        if (configConflicts.Count > 0)
+        {
+            return Json.Fail(
+                $"The settings in {Config.RelativePath} name paths that are not there: {string.Join("; ", configConflicts)}.",
+                "Correct the value or remove the key, then run find-conventions again. Ask the user which of the two paths is right before editing the file: it is committed, and nothing here can tell a file that moved from a name that was mistyped. A configured path that does not exist yet is accepted only where the scan found nothing of that kind, since that is a destination rather than a contradiction.");
         }
 
         // ---------------------------------------------------------------------------

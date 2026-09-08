@@ -68,6 +68,11 @@ Run `find-conventions` with `--path <repository>` and `--summary`, from the scra
 Read the fields listed below; the rest of the JSON describes projects and resource groups the workflow does not touch, so skip it.
 Ask nothing in this step: collect what is undecided and put it in the single question round of Step 4.
 
+Exit 1 saying the settings name paths that are not there is the one exception, because there is nothing to collect until it is resolved: the committed config file and the repository disagree about where a piece lives, and only the user knows which side moved.
+Show both paths from the `error`, ask which is right, edit `.claude/roslyn-skills/add-diagnostic.md` accordingly (correct the value, or remove the key and let detection answer), and run `find-conventions` again.
+Never work around it by reading the detected path out of the message: that is the fallback the exit code exists to prevent.
+A configured path that does not exist yet is not this case — the tool accepts it as the destination, and `references/documentation.md` says how it tells the two apart.
+
 - `diagnosticPrefix`, `diagnosticIds`, `suppressionIds` — prefix, IDs file paths, class visibility, digit count, existing IDs, and category bands (`// Design (ABC1xxx)` headers).
 - `diagnosticCategories` — the class holding the `category` constants, null when the repository has none.
   Never search for it by hand.
