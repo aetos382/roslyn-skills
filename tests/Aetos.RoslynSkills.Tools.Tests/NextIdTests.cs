@@ -173,6 +173,51 @@ public sealed class NextIdTests(TestContext testContext) : IDisposable
     }
 
     /// <summary>
+    /// Guarantees the digit count pinned in the settings decides the very first ID of a repository, which is the one
+    /// case nothing else can speak for: with no ID in the file to copy, the default four would hand out an ID that
+    /// breaks the convention the settings were committed to record, and nothing in the output would say so.
+    /// </summary>
+    [TestMethod]
+    public void TheSettingsFileDecidesTheDigitCountOfTheFirstId()
+    {
+        Directory.CreateDirectory(Path.Combine(this._repo.Root, ".git"));
+        this._repo.WriteConfig(
+            """
+            ```json
+            { "idDigits": 5 }
+            ```
+            """);
+        var missing = Path.Combine(this._repo.Root, "src", "A", "DiagnosticIds.cs");
+
+        var json = Tool.Json(0, "add-diagnostic", "next-id", "--ids-file", missing, "--prefix", "CTS", "--band", "1");
+
+        Assert.AreEqual(5, json["digits"]!.GetValue<int>());
+        Assert.AreEqual("CTS10001", json["id"]!.ToString());
+    }
+
+    /// <summary>
+    /// Guarantees the IDs already in the file outrank the digit count in the settings, because a new ID has to line
+    /// up with the ones beside it: a stale setting must not start a second numbering inside one file.
+    /// </summary>
+    [TestMethod]
+    public void TheExistingIdsOutrankTheDigitCountInTheSettings()
+    {
+        Directory.CreateDirectory(Path.Combine(this._repo.Root, ".git"));
+        this._repo.WriteConfig(
+            """
+            ```json
+            { "idDigits": 5 }
+            ```
+            """);
+        var file = this._repo.Write("src/A/DiagnosticIds.cs", Ids);
+
+        var json = Tool.Json(0, "add-diagnostic", "next-id", "--ids-file", file, "--category", "Design");
+
+        Assert.AreEqual(4, json["digits"]!.GetValue<int>());
+        Assert.AreEqual("CTS1003", json["id"]!.ToString());
+    }
+
+    /// <summary>
     /// Guarantees a category the file has no header for is reported as unresolved rather than guessed at: the ID is
     /// still allocated after the highest one, and the flag is what tells the skill to ask for a band.
     /// </summary>

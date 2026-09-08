@@ -350,7 +350,7 @@ internal static partial class FindConventionsCommand
                 info = (IdConst.Parse(text), cls, vis, text);
             }
             var ids = info.Ids.Where(i => prefix is null || (suppression ? i.IsSuppressionOf(prefix) : i.IsDiagnosticOf(prefix))).OrderBy(i => i.Value, StringComparer.Ordinal).ToList();
-            var digits = ids.Count > 0 ? ids.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key : (int.TryParse(config.Get("idDigits"), out var d) ? d : 4);
+            var digits = ids.Count > 0 ? ids.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key : (config.IdDigits ?? 4);
             var bands = IdsFileText.ReadBands(info.Text);
             return new JsonObject
             {

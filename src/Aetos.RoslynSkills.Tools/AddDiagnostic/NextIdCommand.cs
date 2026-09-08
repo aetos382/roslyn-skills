@@ -107,7 +107,14 @@ internal static class NextIdCommand
         }
 
         var mine = all.Where(i => suppression ? i.IsSuppressionOf(prefix) : i.IsDiagnosticOf(prefix)).ToList();
-        var idDigits = digits ?? (mine.Count > 0 ? mine.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key : 4);
+
+        // Digits: explicit, else what the existing IDs of this group already use, else the settings, else 4 — the
+        // order find-conventions reports it in, so both commands answer the same for the same repository. The
+        // existing IDs come first because they are what a new one has to line up with; the settings decide the
+        // first ID of a repository that has none, which is the one case nothing else can speak for.
+        var idDigits = digits ?? (mine.Count > 0
+            ? mine.GroupBy(i => i.Digits).OrderByDescending(g => g.Count()).First().Key
+            : cfg.IdDigits ?? 4);
 
         var bands = IdsFileText.ReadBands(text);
         if (band is null && category is not null && bands.TryGetValue(category, out var b))

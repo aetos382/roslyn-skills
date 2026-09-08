@@ -73,6 +73,10 @@ Show both paths from the `error`, ask which is right, edit `.claude/roslyn-skill
 Never work around it by reading the detected path out of the message: that is the fallback the exit code exists to prevent.
 A configured path that does not exist yet is not this case — the tool accepts it as the destination, and `references/documentation.md` says how it tells the two apart.
 
+- `rootDetected`, `rootError`, `scanErrors` — how much of the repository the report is actually about, and the two fields to read before any of the others.
+  `rootDetected: false` means nothing identified a repository and `--path` was taken as the root, so a subdirectory is standing in for it: every path below is relative to that, and the report describes a repository that looks almost empty whatever the real one holds.
+  Fix `--path` (`rootError` says why git could not answer) and run again rather than reading on.
+  A non-empty `scanErrors` names directories the scan could not enter, and anything reported as absent may be absent only for that reason.
 - `diagnosticPrefix`, `diagnosticIds`, `suppressionIds` — prefix, IDs file paths, class visibility, digit count, existing IDs, and category bands (`// Design (ABC1xxx)` headers).
 - `diagnosticCategories` — the class holding the `category` constants, null when the repository has none.
   Never search for it by hand.
@@ -89,6 +93,7 @@ A configured path that does not exist yet is not this case — the tool accepts 
 - `excludedPluginDirectories` — Claude Code plugin trees inside the repository, skipped, this plugin included when it is installed there.
   Their sample files are documentation and must never be read as the repository's conventions; do not go looking in them by hand either.
 
+Missing while `scanErrors` names a directory the piece could have been in is unknown rather than missing: creating a second IDs file next to one the scan could not read is the one mistake this step can make that Step 7 will not catch, so name the read failure in the report and ask instead.
 When something is missing, create only that piece: ask for the prefix only when `diagnosticPrefix` is null (no config, no existing IDs, no band header carrying one; an empty IDs file is not enough) **and the request does not state one**; ask for the analyzer project only when none is detected; create categories / releases files alongside the existing ones, and a resx only when Step 4 asked for one.
 New IDs files follow the *structure* of `examples/DiagnosticIds.cs`, `examples/SuppressionIds.cs`, and `examples/DiagnosticCategories.cs` with the user's namespace and prefix, one band header for the new category, and none of the sample constants (defaults in `references/id-conventions.md`).
 

@@ -23,6 +23,14 @@ namespace Aetos.RoslynSkills.Tools.AddDiagnostic;
 /// </summary>
 internal static partial class AddResxEntriesCommand
 {
+    /// <summary>
+    /// What every file is written back as, whatever it was read as. <see cref="XmlWriter"/> emits the encoding's
+    /// preamble and restates the declaration from this, so the bytes and what the file says about them cannot
+    /// disagree. A byte order mark the file had is dropped: it is optional in XML, so reproducing it would be a
+    /// code path kept forever to save one line of diff once.
+    /// </summary>
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     [GeneratedRegex(@"^(?<base>.+?)(?<suffix>Title|Message|Description|Justification)$")]
     private static partial Regex EntryName { get; }
 
@@ -169,21 +177,25 @@ internal static partial class AddResxEntriesCommand
             // be unreadable, the files before it have already been rewritten, and a report that never got printed
             // would leave the caller with no record of that.
             XmlDocument? doc = null;
-            var hasBom = false;
-            var newline = "\n";
             try
             {
-                (var content, hasBom, newline) = Text.ReadPreserving(full);
-                // Assigned only once the document is known to be usable: a half-loaded XmlDocument has no
-                // DocumentElement, and the code below reads that one without checking.
+                // The file is handed to the parser as a path rather than decoded here first, because the parser is
+                // stricter than any decoding this command would do itself: it takes the encoding from the byte
+                // order mark and the declaration, and the XML spec makes a byte sequence that is not text in that
+                // encoding a fatal error. So a resx in another encoding either reads correctly or arrives as an
+                // XmlException naming the line and position — never as a string of replacement characters that the
+                // write below would commit in place of somebody's translations.
                 var loaded = new XmlDocument { PreserveWhitespace = true };
-                loaded.LoadXml(content);
+                loaded.Load(full);
+
                 if (loaded.DocumentElement?.Name != "root")
                 {
                     problems.Add($"not a resx document (root element is '{loaded.DocumentElement?.Name}')");
                 }
                 else
                 {
+                    // Assigned only once the document is known to be usable: a half-loaded XmlDocument has no
+                    // DocumentElement, and the code below reads that one without checking.
                     doc = loaded;
                 }
             }
@@ -195,6 +207,7 @@ internal static partial class AddResxEntriesCommand
             if (doc is not null && !validateOnly)
             {
                 var rootEl = doc.DocumentElement!;
+                var newline = HasCarriageReturnLineFeed(doc) ? "\r\n" : "\n";
                 foreach (var e in entries)
                 {
                     if (DataElement(rootEl, e.Name) is { } existing)
@@ -296,7 +309,7 @@ internal static partial class AddResxEntriesCommand
                 {
                     var settings = new XmlWriterSettings
                     {
-                        Encoding = new UTF8Encoding(hasBom),
+                        Encoding = Utf8WithoutBom,
                         Indent = false,
                         NewLineHandling = NewLineHandling.None,
                         OmitXmlDeclaration = doc.FirstChild is not XmlDeclaration,
@@ -393,6 +406,27 @@ internal static partial class AddResxEntriesCommand
 
         Json.Print(report);
         return anyInvalid ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Whether the file this document was parsed from uses CRLF, which an inserted entry has to match or the whole
+    /// file shows up as changed. One CRLF anywhere is enough: the file is edited on Windows, and inserting CRLF
+    /// leaves any LF lines alone rather than converting the file.
+    ///
+    /// The nodes are what carry the answer because <see cref="XmlDocument"/> does not normalize line breaks the way
+    /// <see cref="XmlReader"/> does, so the whitespace the file was written with is still in the tree.
+    /// </summary>
+    private static bool HasCarriageReturnLineFeed(XmlNode node)
+    {
+        foreach (XmlNode child in node.ChildNodes)
+        {
+            if (child.Value?.Contains("\r\n", StringComparison.Ordinal) == true || HasCarriageReturnLineFeed(child))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

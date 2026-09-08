@@ -8,6 +8,8 @@ Comments and trailing commas are allowed.
 ```json
 {
   "diagnosticPrefix": "CTS",
+  // Digits in the number, 1 to 9. The IDs already in the file win over it; this decides the first ID of a
+  // repository that has none.
   "idDigits": 4,
   "diagnosticIdsFile": "src/Contoso.Analyzers/DiagnosticIds.cs",
   "suppressionIdsFile": "src/Contoso.Analyzers/SuppressionIds.cs",

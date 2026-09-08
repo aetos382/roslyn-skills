@@ -73,12 +73,21 @@ Options: `--resx` (repeatable, or comma-separated), `--entries` (JSON array or p
 
 The command:
 
-- preserves the file's BOM, line endings, indentation, and existing element order;
+- preserves the file's line endings, indentation, and existing element order, and writes it back as UTF-8 with no byte order mark, dropping one the file had (see below);
 - inserts `<data name="..." xml:space="preserve"><value>...</value></data>` at the computed position;
 - skips names that already exist (use `--force` to overwrite their values);
 - reloads each file and verifies that it is well-formed XML with root `<root>`, that no `data` name is duplicated, and that every new entry is present with a `<value>`;
 - reports whether a sibling `*.Designer.cs` exists and lacks the new names (`designerStale`);
 - exits with code 1 when any file fails validation.
+
+The encoding is the XML parser's business, not the workflow's: the file is read through its byte order mark and its declaration, and written back as UTF-8 without a mark.
+A resx that Visual Studio wrote loses only its byte order mark; one that really is in another encoding is converted, which the report says.
+
+What the parser cannot read, it refuses, and the file is left byte-for-byte untouched — bytes that are not text in the encoding the file claims, and an encoding name this .NET has no provider for (anything beyond the Unicode encodings, ASCII and Latin-1, so `shift_jis` included).
+Both arrive as a `read failed` entry in `problems` with `valid: false`.
+The repair is the user's: the file's bytes and its declaration disagree, and nothing in the file says which of the two is the mistake.
+Report it and say that saving the file as UTF-8 clears it.
+Never work around it by reading the file yourself with a decoder that replaces what it cannot make sense of, which is the one thing here that cannot be undone: it would trade somebody's translations for `U+FFFD` in the same commit that added an entry.
 
 Copy every culture file to the scratchpad before running the command.
 Read the JSON report; if `valid` is false, restore from those copies and fix the cause before retrying.
@@ -141,7 +150,7 @@ Never pick silently when they are spread: `add-resx-entries` runs once per cultu
 Name the file in the option text whenever a row above asks, so the answer is also the consent to create or share it.
 
 Create a new file only where that table calls for one; never on the skill's own reading of the repository.
-Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, then **register it in the csproj**.
+Write the file itself from the neutral file of an existing group (same `resheader` block, same declaration), or from the minimal ResX skeleton when the repository has none, as UTF-8 so `add-resx-entries` can edit it, then **register it in the csproj**.
 The SDK's default glob already embeds it, so the item exists to carry metadata and is written as `Update`, never `Include`:
 
 ```xml
@@ -206,6 +215,7 @@ Say so in the Step 8 report anyway, because the next person to open the reposito
 - Add a `<comment>` to every entry in the **neutral** file whose text contains a placeholder; see "Placeholder comments" below.
   Leave satellite files without comments, and do not add comments to entries that have no placeholder.
 - Do not touch the `resheader` elements or any `metadata`/`assembly` nodes.
-- Keep the declaration `<?xml version="1.0" encoding="utf-8"?>` and the UTF-8 BOM if the file has one.
+- Keep the declaration `<?xml version="1.0" encoding="utf-8"?>`, and save as UTF-8.
+  A byte order mark does not have to be preserved: it is optional in XML, and the tool drops the one Visual Studio writes.
 - The tool reproduces the file's existing shape, including the absence of a trailing newline after `</root>`.
   That is deliberate: matching Visual Studio's output keeps the diff to the added entries, even when `.editorconfig` sets `insert_final_newline`.

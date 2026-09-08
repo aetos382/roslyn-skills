@@ -80,7 +80,7 @@ Free-form notes for the skill go here.
 
 The settings live in the first fenced `json` block, so the file stays an ordinary Markdown document that renders and highlights anywhere.
 `//` comments and trailing commas are allowed.
-A malformed block is reported with a line number rather than silently ignored, so a mistyped key cannot pass for a missing one.
+A malformed block is reported with a line number rather than silently ignored, so a mistyped key cannot pass for a missing one, and so is a value that cannot mean what its key stands for.
 Everything outside the block is free-form notes the skill reads and follows.
 
 Every key is optional.

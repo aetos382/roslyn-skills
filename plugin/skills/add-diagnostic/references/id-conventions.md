@@ -50,6 +50,7 @@ Keep names under roughly 50 characters; the resource names add up to 11 more.
   Avoid prefixes owned by well-known analyzers (`CA`, `CS`, `IDE`, `RS`, `SA`, `MA`, `VSTHRD`, `xUnit`, `NUnit`, `SYSLIB`, `ASP`, `EF`, `BL`, `MVC`, `RZ`, `IL`, `CSE`).
 - **Number**: zero-padded; four digits by default.
   Infer the digit count from existing IDs.
+  `next-id` does that on its own, and in a repository with no ID to infer from it uses `idDigits` from the settings file before the default, so there is nothing to pass: `--digits` is for overriding both, which the workflow has no reason to do.
   Never renumber or reuse a value once it has shipped (release tracking treats the value as the identity of the rule).
 
 ## Grouping by category band

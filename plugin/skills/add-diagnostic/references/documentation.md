@@ -127,7 +127,7 @@ There is deliberately no flag that ignores the settings: it would be reached for
 | Key | Meaning |
 |-----|---------|
 | `diagnosticPrefix` | Three-letter prefix (`CTS`). |
-| `idDigits` | Digits in the number (default 4). |
+| `idDigits` | Digits in the number, 1 to 9. It decides the first ID of a repository that has none; where IDs exist, theirs win, since a new one has to line up with them. Neither: 4. A value that is not a digit count is an error, not a fall back to 4. |
 | `diagnosticIdsFile` / `suppressionIdsFile` / `categoriesFile` | Repository-relative paths. A path that is not there is an error when the scan found that piece elsewhere (see below). |
 | `categories` | Map of category name → band digit. |
 | `resxBaseName` | Base name of the resource group holding diagnostic strings (`Resources`). |

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -38,6 +39,13 @@ internal sealed partial class Config
 
     public string Body { get; } = "";
 
+    /// <summary>
+    /// The digit count the settings pin, null when they leave it open. Every command that mints or reports an ID
+    /// reads it from here, so the two cannot disagree about the same repository. Reading it never fails: a value
+    /// that is not a digit count has already been reported through <see cref="Error"/>.
+    /// </summary>
+    public int? IdDigits => ParseDigits(this.Get("idDigits"));
+
     public Config(string root)
     {
         this.Path = System.IO.Path.Combine(root, RelativePath);
@@ -72,6 +80,11 @@ internal sealed partial class Config
         {
             this.Error = $"The json block in '{RelativePath}' is not valid JSON: {ex.Message}";
         }
+
+        // A value that parsed as JSON but is not the kind of thing its key stands for is reported here for the
+        // same reason a malformed block is: a key nobody can use would otherwise be dropped, the default taken,
+        // and nothing in the output would say the settings had been ignored.
+        this.Error ??= Validate(this.Get("idDigits"));
     }
 
     /// <summary>
@@ -117,6 +130,28 @@ internal sealed partial class Config
     public JsonObject ToJson()
     {
         return (JsonObject)this.Values.DeepClone();
+    }
+
+    /// <summary>
+    /// Why a value that parsed cannot be used, null when it can. Only `idDigits` has a shape to check so far:
+    /// a diagnostic ID has one to nine digits, and anything else — a word, a fraction, a zero — would be
+    /// silently replaced by the default and mint IDs the settings did not ask for.
+    /// </summary>
+    private static string? Validate(string? idDigits)
+    {
+        if (idDigits is not null && ParseDigits(idDigits) is null)
+        {
+            return $"idDigits in '{RelativePath}' is '{idDigits}', which is not a digit count between 1 and 9.";
+        }
+
+        return null;
+    }
+
+    private static int? ParseDigits(string? value)
+    {
+        return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var digits) && digits is >= 1 and <= 9
+            ? digits
+            : null;
     }
 
     /// <summary>Callers want strings; numbers and booleans keep their JSON spelling.</summary>

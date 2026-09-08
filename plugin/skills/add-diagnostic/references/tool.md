@@ -46,6 +46,10 @@ Paths in that JSON are repository-relative, so prefix the repository root before
 Exit code 2 is a bug in the tool rather than a bad argument: the same two fields plus `"unexpected": true`, `exception` and `stackTrace`.
 Report it and stop; re-running the same command will not help.
 
+Exit code 0 is not a promise that the command saw everything it looked for.
+`find-conventions` carries `rootDetected` and `rootError` for a repository it could not identify, and `scanErrors` for the directories it could not read; a field is null when nothing was found **or** when what would have been found was in one of those directories, and only these say which.
+A command that reports per file — `add-resx-entries` — says the same thing per entry in `problems`, with exit code 1.
+
 ## When the SDK is too old
 
 `dotnet tool exec` needs the .NET 10 SDK or later, and an older one fails before NuGet is ever consulted, so the failure carries no `NU####` code and none of the rows below apply.

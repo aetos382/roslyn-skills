@@ -273,6 +273,48 @@ public sealed class ConfigTests(TestContext testContext) : IDisposable
     }
 
     /// <summary>
+    /// Guarantees a digit count that cannot mean what the key stands for is reported rather than replaced by the
+    /// default: the value decides the first ID of a repository that has none, so falling back to four would mint
+    /// an ID against the convention this very file was written to record, and say nothing about ignoring it.
+    /// </summary>
+    [TestMethod]
+    public void AnIdDigitsValueThatIsNotADigitCountIsReported()
+    {
+        foreach (var value in new[] { "\"five\"", "0", "12", "4.5" })
+        {
+            var config = this._repo.WriteConfig(
+                $$"""
+                ```json
+                { "idDigits": {{value}} }
+                ```
+                """);
+
+            Assert.IsNotNull(config.Error, value);
+            Assert.Contains("idDigits", config.Error, StringComparison.Ordinal);
+            Assert.IsNull(config.IdDigits, value);
+        }
+    }
+
+    /// <summary>
+    /// Guarantees a digit count the settings do pin is read back as a number, since it is what every command that
+    /// mints or reports an ID uses when the repository has no ID of its own to copy from.
+    /// </summary>
+    [TestMethod]
+    public void ThePinnedDigitCountIsReadBackAsANumber()
+    {
+        var config = this._repo.WriteConfig(
+            """
+            ```json
+            { "idDigits": 5 }
+            ```
+            """);
+
+        Assert.IsNull(config.Error);
+        Assert.AreEqual(5, config.IdDigits);
+        Assert.IsNull(new Config(this._repo.Root + "-absent").IdDigits, "an absent file pins nothing");
+    }
+
+    /// <summary>
     /// Guarantees numbers and booleans come back in their JSON spelling, because every caller parses the
     /// value from a string.
     /// </summary>
