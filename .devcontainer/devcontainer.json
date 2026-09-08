@@ -1,0 +1,20 @@
+{
+  "name": "roslyn-skills",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:2-10.0-noble",
+  "features": {
+    "ghcr.io/devcontainers/features/powershell:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Anthropic.claude-code",
+        "eamodio.gitlens",
+        "EditorConfig.EditorConfig",
+        "github.vscode-github-actions",
+        "GitHub.vscode-pull-request-github",
+        "ms-dotnettools.csdevkit",
+        "ms-vscode.powershell"
+      ]
+    }
+  }
+}
