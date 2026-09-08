@@ -56,12 +56,11 @@ jobs:
             exit 1
           fi
 
-      # The SDK comes from global.json, which pins a version with rollForward disabled; a floating
-      # dotnet-version would install a patch that pin then rejects.
+      # Pinned to an exact patch version so CI never floats onto a newer SDK on its own.
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          global-json-file: global.json
+          dotnet-version: '10.0.400'
           cache: true
           cache-dependency-path: '**/packages.lock.json'
 
