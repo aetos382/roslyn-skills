@@ -4,9 +4,9 @@
     "net10.0": {
       "Microsoft.CodeAnalysis.CSharp.CodeStyle": {
         "type": "Direct",
-        "requested": "[5.9.0, )",
-        "resolved": "5.9.0",
-        "contentHash": "3+kqzT9CJF9jq5U0wTtRsJIcP5+KnjRXFWgpc0epEvts7YtII6Fe2LaSVRFCLhM+Q6FCJUAC31DJQo4iFUPWtQ=="
+        "requested": "[5.12.0, )",
+        "resolved": "5.12.0",
+        "contentHash": "nltvsgV7mhoEvCfjSZlVhu6Mn07wmXxAGiFRx4jMSAh9ZvuC2bJ+/3YFZfFsmcBIaO6vm1PyoVBAtzN3Ep+Qew=="
       },
       "Spectre.Console": {
         "type": "Direct",
